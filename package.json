@@ -1,0 +1,35 @@
+{
+  "name": "@hit/feature-pack-dashboard-shell",
+  "version": "1.0.0",
+  "description": "Dashboard shell with sidebar, topbar, notifications, and theme support",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint src --ext .ts,.tsx"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
+  },
+  "dependencies": {
+    "lucide-react": "^0.263.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "typescript": "^5.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/c0x65o/hit-feature-pack-dashboard-shell"
+  },
+  "keywords": [
+    "hit",
+    "feature-pack",
+    "dashboard",
+    "shell",
+    "navigation"
+  ],
+  "license": "MIT"
+}

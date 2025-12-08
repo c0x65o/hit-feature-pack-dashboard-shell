@@ -1,0 +1,50 @@
+# Feature Pack: dashboard-shell
+# Provides the dashboard shell (layout, sidebar, topbar, notifications) for HIT apps
+
+name: dashboard-shell
+version: 1.0.0
+description: Dashboard shell with sidebar, topbar, notifications, and theme support
+
+# No routes - this is a layout wrapper, not pages
+routes: []
+
+# No navigation contributions - this renders the navigation itself
+nav: []
+
+# No module dependencies
+requires:
+  modules: []
+
+# Configurable options
+config:
+  schema:
+    brand_name:
+      type: string
+      default: HIT
+      description: Brand/app name shown in navigation
+    logo_url:
+      type: string
+      default: /icon.png
+      description: Logo image URL
+    sidebar_position:
+      type: string
+      enum: [left, right]
+      default: left
+      description: Sidebar position
+    show_notifications:
+      type: boolean
+      default: true
+      description: Show notification bell in topbar
+    show_theme_toggle:
+      type: boolean
+      default: true
+      description: Show dark/light mode toggle
+    show_user_menu:
+      type: boolean
+      default: true
+      description: Show user menu in topbar
+    default_theme:
+      type: string
+      enum: [light, dark, system]
+      default: system
+      description: Default theme mode
