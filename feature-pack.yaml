@@ -48,3 +48,4 @@ config:
       enum: [light, dark, system]
       default: system
       description: Default theme mode
+
