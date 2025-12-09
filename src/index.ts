@@ -1,26 +1,22 @@
-// Main exports
-export { DashboardShell, ShellProvider } from './components/DashboardShell';
+/**
+ * @hit/feature-pack-dashboard-shell
+ *
+ * Dashboard shell with sidebar, topbar, notifications, and theme support.
+ * Designed to match the erp-mini-dashboard reference design.
+ *
+ * Includes ERP-style UI Kit implementation for feature packs to use via useUi().
+ */
 
-// Component exports
-export {
-  Sidebar,
-  Topbar,
-  MobileMenu,
-  NavTree,
-  NotificationPanel,
-  ProfileMenu,
-  ThemeToggle,
-} from './components';
+// Main component
+export { DashboardShell, useShell } from './components/DashboardShell';
 
-// Hook exports
-export {
-  useShell,
-  useShellState,
-  ShellContext,
-  useNotifications,
-} from './hooks';
+// UI Kit implementation (ERP style)
+export { erpKit } from './kit';
 
-// Type exports
+// Re-export UI Kit context for feature packs
+export { useUi, UiKitProvider } from '@hit/ui-kit';
+
+// Types
 export type {
   NavItem,
   ShellConfig,

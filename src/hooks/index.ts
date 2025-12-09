@@ -1,3 +1,7 @@
-export { useShell, useShellState, ShellContext } from './useShell';
-export { useNotifications } from './useNotifications';
-export type { UseNotificationsReturn } from './useNotifications';
+/**
+ * Dashboard Shell Hooks
+ * 
+ * The main useShell hook is exported from the DashboardShell component.
+ */
+
+export { useShell } from '../components/DashboardShell';

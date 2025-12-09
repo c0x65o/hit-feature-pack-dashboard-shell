@@ -1,7 +1,6 @@
 /**
- * Type definitions for the dashboard shell
+ * Navigation item structure for sidebar tree
  */
-
 export interface NavItem {
   id: string;
   label: string;
@@ -9,12 +8,15 @@ export interface NavItem {
   icon?: string;
   roles?: string[];
   showWhen?: 'authenticated' | 'unauthenticated' | 'always';
-  children?: Omit<NavItem, 'children' | 'id'>[];
+  children?: Omit<NavItem, 'children'>[];
 }
 
+/**
+ * Shell configuration options
+ */
 export interface ShellConfig {
   brandName: string;
-  logoUrl: string;
+  logoUrl?: string;
   sidebarPosition: 'left' | 'right';
   showNotifications: boolean;
   showThemeToggle: boolean;
@@ -22,23 +24,33 @@ export interface ShellConfig {
   defaultTheme: 'light' | 'dark' | 'system';
 }
 
+/**
+ * User information for profile menu
+ */
 export interface ShellUser {
+  id?: string;
   email?: string;
   name?: string;
+  avatar?: string;
   roles?: string[];
-  avatarUrl?: string;
 }
 
+/**
+ * Notification item
+ */
 export interface Notification {
-  id: string;
-  type: 'order' | 'inventory' | 'payment' | 'hr' | 'error' | 'system' | 'info';
+  id: string | number;
+  type?: 'order' | 'inventory' | 'payment' | 'hr' | 'error' | 'system' | string;
   title: string;
   message: string;
-  timestamp: Date;
+  timestamp: Date | string;
   read: boolean;
-  priority: 'high' | 'medium' | 'low';
+  priority?: 'high' | 'medium' | 'low';
 }
 
+/**
+ * Shell state (internal)
+ */
 export interface ShellState {
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
