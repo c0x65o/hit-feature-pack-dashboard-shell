@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import {
   Menu,
-  X,
   Bell,
   Sun,
   Moon,
@@ -194,25 +193,29 @@ export function DashboardShell({
   onLogout,
   initialNotifications = [],
 }: DashboardShellProps) {
-  // Load persisted menu state from localStorage
-  const [menuOpen, setMenuOpen] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('dashboard-shell-menu-open');
-      return saved === 'true';
-    }
-    return false;
-  });
+  // Start with false to avoid hydration mismatch, then load from localStorage
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [hasHydrated, setHasHydrated] = useState(false);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>(initialNotifications);
 
-  // Persist menu state to localStorage whenever it changes
+  // Load persisted menu state from localStorage after hydration
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem('dashboard-shell-menu-open');
+    if (saved === 'true') {
+      setMenuOpen(true);
+    }
+    setHasHydrated(true);
+  }, []);
+
+  // Persist menu state to localStorage whenever it changes (only after hydration)
+  useEffect(() => {
+    if (hasHydrated) {
       localStorage.setItem('dashboard-shell-menu-open', String(menuOpen));
     }
-  }, [menuOpen]);
+  }, [menuOpen, hasHydrated]);
 
   const config: ShellConfig = {
     brandName: configProp.brandName || 'HIT',
@@ -278,29 +281,27 @@ export function DashboardShell({
           color: colors.text.primary,
         }}
       >
-        {/* Sidebar Overlay - removed click-to-close, menu stays open until manually closed */}
-
-        {/* Sidebar */}
+        {/* Sidebar - pushes content over when open */}
         <aside
           style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
+            width: menuOpen ? '280px' : '0px',
+            minWidth: menuOpen ? '280px' : '0px',
             height: '100%',
-            width: '280px',
             backgroundColor: colors.bg.sidebar,
-            borderRight: `1px solid ${colors.border.subtle}`,
-            transform: menuOpen ? 'translateX(0)' : 'translateX(-100%)',
-            transition: 'transform 300ms ease',
-            zIndex: 50,
+            borderRight: menuOpen ? `1px solid ${colors.border.subtle}` : 'none',
+            // Only animate after hydration to prevent flash
+            transition: hasHydrated ? 'width 300ms ease, min-width 300ms ease' : 'none',
             display: 'flex',
             flexDirection: 'column',
+            overflow: 'hidden',
+            flexShrink: 0,
           }}
         >
           {/* Sidebar Header */}
           <div
             style={{
               height: '64px',
+              minWidth: '280px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -352,7 +353,7 @@ export function DashboardShell({
                 e.currentTarget.style.backgroundColor = 'transparent';
               }}
             >
-              <X size={20} />
+              <Menu size={20} />
             </button>
           </div>
 
@@ -362,6 +363,7 @@ export function DashboardShell({
               flex: 1,
               overflowY: 'auto',
               padding: '16px 12px',
+              minWidth: '280px',
             }}
           >
             {navItems.map((item) => (
@@ -380,6 +382,7 @@ export function DashboardShell({
               padding: '16px',
               borderTop: `1px solid ${colors.border.subtle}`,
               flexShrink: 0,
+              minWidth: '280px',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: colors.text.muted }}>
@@ -397,7 +400,7 @@ export function DashboardShell({
         </aside>
 
         {/* Main Content */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', transition: hasHydrated ? 'margin 300ms ease' : 'none' }}>
           {/* Top Bar */}
           <header
             style={{
@@ -411,20 +414,22 @@ export function DashboardShell({
               flexShrink: 0,
             }}
           >
-            {/* Left side */}
+            {/* Left side - only show hamburger when sidebar is closed */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <button
-                onClick={() => setMenuOpen(true)}
-                style={iconButtonStyle}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = colors.bg.elevated;
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                }}
-              >
-                <Menu size={20} />
-              </button>
+              {!menuOpen && (
+                <button
+                  onClick={() => setMenuOpen(true)}
+                  style={iconButtonStyle}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = colors.bg.elevated;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                >
+                  <Menu size={20} />
+                </button>
+              )}
             </div>
 
             {/* Right side */}
