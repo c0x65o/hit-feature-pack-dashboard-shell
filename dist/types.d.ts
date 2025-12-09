@@ -1,0 +1,75 @@
+/**
+ * Navigation group names
+ */
+export type NavGroup = 'main' | 'system' | string;
+/**
+ * Navigation item structure for sidebar tree
+ */
+export interface NavItem {
+    id: string;
+    label: string;
+    path?: string;
+    icon?: string;
+    /** Optional feature flag name to gate visibility */
+    featureFlag?: string;
+    roles?: string[];
+    showWhen?: 'authenticated' | 'unauthenticated' | 'always';
+    children?: Omit<NavItem, 'children'>[];
+    /** Group this item belongs to (e.g., 'main', 'system') */
+    group?: NavGroup;
+    /** Sort weight within group (lower = higher in list) */
+    weight?: number;
+    /** Badge text or count to show */
+    badge?: string | number;
+}
+/**
+ * Shell configuration options
+ */
+export interface ShellConfig {
+    brandName: string;
+    logoUrl?: string;
+    sidebarPosition: 'left' | 'right';
+    showNotifications: boolean;
+    showThemeToggle: boolean;
+    showUserMenu: boolean;
+    defaultTheme: 'light' | 'dark' | 'system';
+}
+/**
+ * User information for profile menu
+ */
+export interface ShellUser {
+    id?: string;
+    email?: string;
+    name?: string;
+    avatar?: string;
+    roles?: string[];
+}
+/**
+ * Notification item
+ */
+export interface Notification {
+    id: string | number;
+    type?: 'order' | 'inventory' | 'payment' | 'hr' | 'error' | 'system' | string;
+    title: string;
+    message: string;
+    timestamp: Date | string;
+    read: boolean;
+    priority?: 'high' | 'medium' | 'low';
+}
+/**
+ * Shell state (internal)
+ */
+export interface ShellState {
+    sidebarOpen: boolean;
+    setSidebarOpen: (open: boolean) => void;
+    toggleSidebar: () => void;
+    theme: 'light' | 'dark';
+    setTheme: (theme: 'light' | 'dark') => void;
+    toggleTheme: () => void;
+    expandedNavItems: Set<string>;
+    toggleNavItem: (id: string) => void;
+    config: ShellConfig;
+    user: ShellUser | null;
+    navItems: NavItem[];
+}
+//# sourceMappingURL=types.d.ts.map
