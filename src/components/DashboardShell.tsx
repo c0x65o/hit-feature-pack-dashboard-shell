@@ -4,49 +4,16 @@ import React, { useState, useEffect, useCallback, createContext, useContext } fr
 import {
   Menu,
   Bell,
-  Sun,
-  Moon,
   User,
   Settings,
   LogOut,
   ChevronRight,
   ChevronDown,
-  Check,
-  Trash2,
 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
-import { UiKitProvider } from '@hit/ui-kit';
+import { UiKitProvider, ThemeProvider, useThemeTokens, styles } from '@hit/ui-kit';
 import { erpKit } from '../kit';
 import type { NavItem, ShellUser, Notification, ShellConfig } from '../types';
-
-// =============================================================================
-// DESIGN SYSTEM (matches kit.ts exactly)
-// =============================================================================
-
-const colors = {
-  bg: {
-    page: '#0a0a0f',
-    surface: '#12121a',
-    elevated: '#1a1a24',
-    sidebar: '#0d0d12',
-  },
-  border: {
-    subtle: '#1f1f2e',
-    default: '#2a2a3d',
-  },
-  text: {
-    primary: '#f4f4f5',
-    secondary: '#a1a1aa',
-    muted: '#71717a',
-  },
-  primary: {
-    default: '#3b82f6',
-    hover: '#2563eb',
-  },
-  error: {
-    default: '#ef4444',
-  },
-};
 
 // =============================================================================
 // CONTEXT
@@ -71,31 +38,26 @@ export function useShell() {
 // NAV GROUP HELPERS
 // =============================================================================
 
-/** Group configuration with display labels */
 const groupConfig: Record<string, { label: string; order: number }> = {
   main: { label: 'MAIN', order: 1 },
   system: { label: 'SYSTEM', order: 2 },
 };
 
-/** Group nav items by their group property, sorted by weight within each group */
 function groupNavItems(items: NavItem[]): { group: string; label: string; items: NavItem[] }[] {
   const groups: Record<string, NavItem[]> = {};
 
-  // Group items
   items.forEach((item) => {
-    const group = item.group || 'main'; // Default to 'main' if no group specified
+    const group = item.group || 'main';
     if (!groups[group]) {
       groups[group] = [];
     }
     groups[group].push(item);
   });
 
-  // Sort items within each group by weight
   Object.keys(groups).forEach((group) => {
     groups[group].sort((a, b) => (a.weight ?? 500) - (b.weight ?? 500));
   });
 
-  // Convert to array and sort groups by their configured order
   return Object.entries(groups)
     .map(([group, items]) => ({
       group,
@@ -116,7 +78,6 @@ function groupNavItems(items: NavItem[]): { group: string; label: string; items:
 function isFlagEnabled(flag?: string, cfg?: any, authFeatures?: any): boolean {
   if (!flag) return true;
   
-  // First check auth module features (snake_case from API)
   if (authFeatures) {
     const authLookup: Record<string, string> = {
       'auth.allowSignup': 'allow_signup',
@@ -141,7 +102,6 @@ function isFlagEnabled(flag?: string, cfg?: any, authFeatures?: any): boolean {
     }
   }
   
-  // Fallback to hit-config.json (camelCase)
   const auth = cfg?.auth || {};
   const admin = cfg?.admin || {};
   const lookup: Record<string, boolean | undefined> = {
@@ -193,12 +153,13 @@ interface NavItemComponentProps {
 }
 
 function NavItemComponent({ item, level = 0, activePath, onNavigate }: NavItemComponentProps) {
-  const { expandedNodes, toggleNode, setMenuOpen } = useShell();
+  const { expandedNodes, toggleNode } = useShell();
+  const { colors, radius, textStyles: ts, spacing } = useThemeTokens();
+  
   const hasChildren = item.children && item.children.length > 0;
   const isExpanded = expandedNodes.has(item.id);
   const isActive = activePath === item.path || (hasChildren && item.children?.some(child => child.path === activePath));
 
-  // Get icon component
   const iconName = item.icon
     ? item.icon.charAt(0).toUpperCase() + item.icon.slice(1).replace(/-([a-z])/g, (g) => g[1].toUpperCase())
     : '';
@@ -215,77 +176,60 @@ function NavItemComponent({ item, level = 0, activePath, onNavigate }: NavItemCo
       } else if (typeof window !== 'undefined') {
         window.location.href = item.path;
       }
-      // Menu stays open - don't auto-close on navigation
     }
   };
 
-  // Check if any child is active (for highlighting parent)
   const hasActiveChild = hasChildren && item.children?.some(child => child.path === activePath);
 
   return (
     <div>
       <button
         onClick={handleClick}
-        style={{
+        style={styles({
           display: 'flex',
           alignItems: 'center',
-          gap: '10px',
+          gap: spacing.sm,
           width: level > 0 ? `calc(100% - ${level * 12}px)` : '100%',
-          padding: level > 0 ? '8px 12px 8px 36px' : '10px 12px',
+          padding: level > 0 ? `${spacing.sm} ${spacing.md} ${spacing.sm} ${spacing['3xl']}` : `${spacing.sm} ${spacing.md}`,
           marginLeft: level > 0 ? `${level * 12}px` : '0',
-          marginBottom: '2px',
-          fontSize: level === 0 ? '14px' : '13px',
-          fontWeight: level === 0 ? '500' : '400',
-          color: (isActive && !hasChildren) ? '#ffffff' : hasActiveChild ? colors.text.primary : colors.text.secondary,
+          marginBottom: spacing.px,
+          fontSize: level === 0 ? ts.body.fontSize : ts.bodySmall.fontSize,
+          fontWeight: level === 0 ? ts.label.fontWeight : ts.body.fontWeight,
+          color: (isActive && !hasChildren) ? colors.text.inverse : hasActiveChild ? colors.text.primary : colors.text.secondary,
           backgroundColor: (isActive && !hasChildren) ? colors.primary.default : 'transparent',
           border: 'none',
-          borderRadius: '6px',
+          borderRadius: radius.md,
           cursor: 'pointer',
           textAlign: 'left',
           transition: 'all 150ms ease',
-        }}
-        onMouseEnter={(e) => {
-          if (!(isActive && !hasChildren)) {
-            e.currentTarget.style.backgroundColor = colors.bg.elevated;
-            e.currentTarget.style.color = colors.text.primary;
-          }
-        }}
-        onMouseLeave={(e) => {
-          if (!(isActive && !hasChildren)) {
-            e.currentTarget.style.backgroundColor = 'transparent';
-            e.currentTarget.style.color = hasActiveChild ? colors.text.primary : colors.text.secondary;
-          }
-        }}
+        })}
       >
         {IconComponent && <IconComponent size={18} style={{ flexShrink: 0 }} />}
-        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span style={styles({ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })}>
           {item.label}
         </span>
-        {/* Badge */}
         {item.badge !== undefined && (
-          <span
-            style={{
-              backgroundColor: '#ef4444',
-              color: '#ffffff',
-              fontSize: '11px',
-              fontWeight: 600,
-              padding: '2px 6px',
-              borderRadius: '10px',
-              minWidth: '20px',
-              textAlign: 'center',
-            }}
-          >
+          <span style={styles({
+            backgroundColor: colors.error.default,
+            color: colors.text.inverse,
+            fontSize: '11px',
+            fontWeight: 600,
+            padding: '2px 6px',
+            borderRadius: radius.full,
+            minWidth: '20px',
+            textAlign: 'center',
+          })}>
             {item.badge}
           </span>
         )}
         {hasChildren && (
-          <span style={{ display: 'flex', marginRight: '-4px' }}>
+          <span style={styles({ display: 'flex', marginRight: '-4px' })}>
             {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
           </span>
         )}
       </button>
       {hasChildren && isExpanded && (
-        <div style={{ marginTop: '2px' }}>
+        <div style={styles({ marginTop: spacing.px })}>
           {item.children!.map((child, idx) => (
             <NavItemComponent
               key={`${item.id}-${idx}`}
@@ -306,128 +250,82 @@ function NavItemComponent({ item, level = 0, activePath, onNavigate }: NavItemCo
 // =============================================================================
 
 function NavGroupHeader({ label }: { label: string }) {
+  const { colors, textStyles: ts, spacing } = useThemeTokens();
+  
   return (
-    <div
-      style={{
-        padding: '16px 12px 8px',
-        fontSize: '11px',
-        fontWeight: 600,
-        color: colors.text.muted,
-        letterSpacing: '0.05em',
-        textTransform: 'uppercase',
-      }}
-    >
+    <div style={styles({
+      padding: `${spacing.lg} ${spacing.md} ${spacing.sm}`,
+      fontSize: '11px',
+      fontWeight: 600,
+      color: colors.text.muted,
+      letterSpacing: '0.05em',
+      textTransform: 'uppercase',
+    })}>
       {label}
     </div>
   );
 }
 
 // =============================================================================
-// MAIN COMPONENT
+// SHELL CONTENT (USES THEME)
 // =============================================================================
 
-interface DashboardShellProps {
+interface ShellContentProps {
   children: React.ReactNode;
-  config?: Partial<ShellConfig>;
-  navItems?: NavItem[];
-  user?: ShellUser | null;
-  activePath?: string;
-  pageTitle?: string;
+  config: ShellConfig;
+  navItems: NavItem[];
+  user: ShellUser | null;
+  activePath: string;
   onNavigate?: (path: string) => void;
   onLogout?: () => void;
-  initialNotifications?: Notification[];
+  initialNotifications: Notification[];
 }
 
-// Module-level cache to persist state across client-side navigations
-let menuStateCache: boolean | null = null;
-let hitConfigCache: any | null = null;
-let authConfigCache: any | null = null;
-
-export function DashboardShell({
+function ShellContent({
   children,
-  config: configProp = {},
-  navItems = [],
-  user = null,
-  activePath = '/',
+  config,
+  navItems,
+  user,
+  activePath,
   onNavigate,
   onLogout,
-  initialNotifications = [],
-}: DashboardShellProps) {
-  // Initialize from cache or localStorage (client-only, no SSR concerns with ssr:false)
+  initialNotifications,
+}: ShellContentProps) {
+  const { colors, radius, textStyles: ts, spacing, shadows } = useThemeTokens();
+
   const [menuOpen, setMenuOpenState] = useState(() => {
-    if (menuStateCache !== null) return menuStateCache;
-    const saved = localStorage.getItem('dashboard-shell-menu-open');
-    const value = saved !== 'false'; // default to true
-    menuStateCache = value;
-    return value;
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('dashboard-shell-menu-open');
+      return saved !== 'false';
+    }
+    return true;
   });
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>(initialNotifications);
-  const [hitConfig, setHitConfig] = useState<any | null>(hitConfigCache);
-  const [authConfig, setAuthConfig] = useState<any | null>(authConfigCache);
+  const [notifications] = useState<Notification[]>(initialNotifications);
+  const [hitConfig, setHitConfig] = useState<any | null>(null);
+  const [authConfig, setAuthConfig] = useState<any | null>(null);
 
-  // Wrapper to update both state and cache
   const setMenuOpen = useCallback((open: boolean) => {
-    menuStateCache = open;
     setMenuOpenState(open);
-    localStorage.setItem('dashboard-shell-menu-open', String(open));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('dashboard-shell-menu-open', String(open));
+    }
   }, []);
 
-  // Load hit-config.json and auth config once
   useEffect(() => {
-    // Load hit-config.json
-    if (!hitConfigCache) {
-      fetch('/hit-config.json')
-        .then((res) => res.json())
-        .then((data) => {
-          hitConfigCache = data;
-          setHitConfig(data);
-        })
-        .catch(() => setHitConfig(null));
-    }
+    fetch('/hit-config.json')
+      .then((res) => res.json())
+      .then((data) => setHitConfig(data))
+      .catch(() => setHitConfig(null));
 
-    // Load auth module config
-    if (!authConfigCache) {
-      fetch('/api/proxy/auth/config')
-        .then((res) => res.json())
-        .then((data) => {
-          const features = data.features || {};
-          authConfigCache = features;
-          setAuthConfig(features);
-        })
-        .catch(() => {
-          // If fetch fails, try to use hit-config.json auth section
-          if (hitConfigCache?.auth) {
-            const mapped = {
-              allow_signup: hitConfigCache.auth.allowSignup,
-              password_reset: hitConfigCache.auth.passwordReset,
-              two_factor_auth: hitConfigCache.auth.twoFactorAuth,
-              audit_log: hitConfigCache.auth.auditLog,
-              magic_link_login: hitConfigCache.auth.magicLinkLogin,
-              email_verification: hitConfigCache.auth.emailVerification,
-            };
-            authConfigCache = mapped;
-            setAuthConfig(mapped);
-          } else {
-            setAuthConfig(null);
-          }
-        });
-    }
+    fetch('/api/proxy/auth/config')
+      .then((res) => res.json())
+      .then((data) => setAuthConfig(data.features || {}))
+      .catch(() => setAuthConfig(null));
   }, []);
 
-  const config: ShellConfig = {
-    brandName: configProp.brandName || 'HIT',
-    logoUrl: configProp.logoUrl,
-    sidebarPosition: configProp.sidebarPosition || 'left',
-    showNotifications: configProp.showNotifications ?? true,
-    showThemeToggle: configProp.showThemeToggle ?? false, // Disabled for now - dark only
-    showUserMenu: configProp.showUserMenu ?? true,
-    defaultTheme: 'dark',
-  };
-
-  // Set data-theme on document for CSS variable theming
   useEffect(() => {
     if (typeof document !== 'undefined') {
       document.documentElement.setAttribute('data-theme', 'dark');
@@ -456,7 +354,6 @@ export function DashboardShell({
     toggleNode,
   };
 
-  // Icon button style helper
   const iconButtonStyle: React.CSSProperties = {
     display: 'flex',
     alignItems: 'center',
@@ -465,108 +362,80 @@ export function DashboardShell({
     height: '40px',
     background: 'none',
     border: 'none',
-    borderRadius: '8px',
+    borderRadius: radius.lg,
     color: colors.text.secondary,
     cursor: 'pointer',
     transition: 'all 150ms ease',
   };
 
-  // Menu state is used directly (no hydration concerns with ssr:false)
   const showSidebar = menuOpen;
 
   return (
     <ShellContext.Provider value={contextValue}>
-      <div
-        style={{
+      <div style={styles({
+        display: 'flex',
+        height: '100vh',
+        backgroundColor: colors.bg.page,
+        color: colors.text.primary,
+      })}>
+        {/* Sidebar */}
+        <aside style={styles({
+          width: showSidebar ? '280px' : '0px',
+          minWidth: showSidebar ? '280px' : '0px',
+          height: '100%',
+          backgroundColor: colors.bg.muted,
+          borderRight: showSidebar ? `1px solid ${colors.border.subtle}` : 'none',
           display: 'flex',
-          height: '100vh',
-          backgroundColor: colors.bg.page,
-          color: colors.text.primary,
-        }}
-      >
-        {/* Sidebar - pushes content over when open */}
-        <aside
-          style={{
-            width: showSidebar ? '280px' : '0px',
-            minWidth: showSidebar ? '280px' : '0px',
-            height: '100%',
-            backgroundColor: colors.bg.sidebar,
-            borderRight: showSidebar ? `1px solid ${colors.border.subtle}` : 'none',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-            flexShrink: 0,
-          }}
-        >
+          flexDirection: 'column',
+          overflow: 'hidden',
+          flexShrink: 0,
+        })}>
           {/* Sidebar Header */}
-          <div
-            style={{
-              height: '64px',
-              minWidth: '280px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '0 16px',
-              borderBottom: `1px solid ${colors.border.subtle}`,
-              flexShrink: 0,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div
-                style={{
-                  width: '32px',
-                  height: '32px',
-                  background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
-                  borderRadius: '8px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  overflow: 'hidden',
-                }}
-              >
+          <div style={styles({
+            height: '64px',
+            minWidth: '280px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: `0 ${spacing.lg}`,
+            borderBottom: `1px solid ${colors.border.subtle}`,
+            flexShrink: 0,
+          })}>
+            <div style={styles({ display: 'flex', alignItems: 'center', gap: spacing.sm })}>
+              <div style={styles({
+                width: '32px',
+                height: '32px',
+                background: `linear-gradient(135deg, ${colors.primary.default}, ${colors.accent.default})`,
+                borderRadius: radius.lg,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'hidden',
+              })}>
                 {config.logoUrl ? (
-                  <img
-                    src={config.logoUrl}
-                    alt={config.brandName}
-                    style={{ width: '20px', height: '20px', objectFit: 'contain' }}
-                  />
+                  <img src={config.logoUrl} alt={config.brandName} style={{ width: '20px', height: '20px', objectFit: 'contain' }} />
                 ) : (
-                  <span style={{ color: '#fff', fontWeight: 700, fontSize: '14px' }}>
+                  <span style={styles({ color: colors.text.inverse, fontWeight: 700, fontSize: ts.body.fontSize })}>
                     {config.brandName.charAt(0)}
                   </span>
                 )}
               </div>
-              <span style={{ fontSize: '16px', fontWeight: 600, color: colors.text.primary }}>
+              <span style={styles({ fontSize: ts.heading3.fontSize, fontWeight: ts.heading3.fontWeight, color: colors.text.primary })}>
                 {config.brandName}
               </span>
             </div>
-            <button
-              onClick={() => setMenuOpen(false)}
-              style={{
-                ...iconButtonStyle,
-                width: '36px',
-                height: '36px',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = colors.bg.elevated;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'transparent';
-              }}
-            >
+            <button onClick={() => setMenuOpen(false)} style={{ ...iconButtonStyle, width: '36px', height: '36px' }}>
               <Menu size={20} />
             </button>
           </div>
 
           {/* Navigation */}
-          <nav
-            style={{
-              flex: 1,
-              overflowY: 'auto',
-              padding: '8px 12px',
-              minWidth: '280px',
-            }}
-          >
+          <nav style={styles({
+            flex: 1,
+            overflowY: 'auto',
+            padding: `${spacing.sm} ${spacing.md}`,
+            minWidth: '280px',
+          })}>
             {groupNavItems(filterNavByFlags(navItems, hitConfig, authConfig)).map((group) => (
               <div key={group.group}>
                 <NavGroupHeader label={group.label} />
@@ -583,245 +452,177 @@ export function DashboardShell({
           </nav>
 
           {/* Sidebar Footer */}
-          <div
-            style={{
-              padding: '16px',
-              borderTop: `1px solid ${colors.border.subtle}`,
-              flexShrink: 0,
-              minWidth: '280px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: colors.text.muted }}>
-              <div
-                style={{
-                  width: '8px',
-                  height: '8px',
-                  backgroundColor: '#22c55e',
-                  borderRadius: '50%',
-                }}
-              />
+          <div style={styles({
+            padding: spacing.lg,
+            borderTop: `1px solid ${colors.border.subtle}`,
+            flexShrink: 0,
+            minWidth: '280px',
+          })}>
+            <div style={styles({ display: 'flex', alignItems: 'center', gap: spacing.sm, fontSize: ts.bodySmall.fontSize, color: colors.text.muted })}>
+              <div style={styles({
+                width: '8px',
+                height: '8px',
+                backgroundColor: colors.success.default,
+                borderRadius: radius.full,
+              })} />
               <span>System Online</span>
             </div>
           </div>
         </aside>
 
         {/* Main Content */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={styles({ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' })}>
           {/* Top Bar */}
-          <header
-            style={{
-              height: '64px',
-              backgroundColor: colors.bg.surface,
-              borderBottom: `1px solid ${colors.border.subtle}`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '0 24px',
-              flexShrink: 0,
-            }}
-          >
-            {/* Left side - only show hamburger when sidebar is closed */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <header style={styles({
+            height: '64px',
+            backgroundColor: colors.bg.surface,
+            borderBottom: `1px solid ${colors.border.subtle}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: `0 ${spacing['2xl']}`,
+            flexShrink: 0,
+          })}>
+            <div style={styles({ display: 'flex', alignItems: 'center', gap: spacing.lg })}>
               {!showSidebar && (
-                <button
-                  onClick={() => setMenuOpen(true)}
-                  style={iconButtonStyle}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = colors.bg.elevated;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = 'transparent';
-                  }}
-                >
+                <button onClick={() => setMenuOpen(true)} style={iconButtonStyle}>
                   <Menu size={20} />
                 </button>
               )}
             </div>
 
-            {/* Right side */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              {/* Notifications */}
+            <div style={styles({ display: 'flex', alignItems: 'center', gap: spacing.sm })}>
               {config.showNotifications && (
                 <div style={{ position: 'relative' }}>
                   <button
-                    onClick={() => {
-                      setShowNotifications(!showNotifications);
-                      setShowProfileMenu(false);
-                    }}
+                    onClick={() => { setShowNotifications(!showNotifications); setShowProfileMenu(false); }}
                     style={iconButtonStyle}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = colors.bg.elevated;
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                    }}
                   >
                     <Bell size={20} />
                     {unreadCount > 0 && (
-                      <span
-                        style={{
-                          position: 'absolute',
-                          top: '4px',
-                          right: '4px',
-                          width: '18px',
-                          height: '18px',
-                          backgroundColor: colors.error.default,
-                          color: '#fff',
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          borderRadius: '50%',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
+                      <span style={styles({
+                        position: 'absolute',
+                        top: '4px',
+                        right: '4px',
+                        width: '18px',
+                        height: '18px',
+                        backgroundColor: colors.error.default,
+                        color: colors.text.inverse,
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        borderRadius: radius.full,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      })}>
                         {unreadCount > 9 ? '9+' : unreadCount}
                       </span>
                     )}
                   </button>
-
-                  {/* Notification dropdown would go here */}
                 </div>
               )}
 
-              {/* User Menu */}
               {config.showUserMenu && (
                 <div style={{ position: 'relative' }}>
                   <button
-                    onClick={() => {
-                      setShowProfileMenu(!showProfileMenu);
-                      setShowNotifications(false);
-                    }}
-                    style={{
+                    onClick={() => { setShowProfileMenu(!showProfileMenu); setShowNotifications(false); }}
+                    style={styles({
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '12px',
-                      padding: '6px 12px 6px 6px',
+                      gap: spacing.md,
+                      padding: `${spacing.xs} ${spacing.md} ${spacing.xs} ${spacing.xs}`,
                       background: 'none',
                       border: 'none',
-                      borderRadius: '8px',
+                      borderRadius: radius.lg,
                       cursor: 'pointer',
-                      transition: 'all 150ms ease',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = colors.bg.elevated;
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                    }}
+                    })}
                   >
-                    <div
-                      style={{
-                        width: '36px',
-                        height: '36px',
-                        background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
-                        borderRadius: '50%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <User size={18} style={{ color: '#fff' }} />
+                    <div style={styles({
+                      width: '36px',
+                      height: '36px',
+                      background: `linear-gradient(135deg, ${colors.primary.default}, ${colors.accent.default})`,
+                      borderRadius: radius.full,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    })}>
+                      <User size={18} style={{ color: colors.text.inverse }} />
                     </div>
-                    <div style={{ textAlign: 'left' }}>
-                      <div style={{ fontSize: '14px', fontWeight: 500, color: colors.text.primary }}>
+                    <div style={styles({ textAlign: 'left' })}>
+                      <div style={styles({ fontSize: ts.body.fontSize, fontWeight: ts.label.fontWeight, color: colors.text.primary })}>
                         {user?.name || user?.email || 'User'}
                       </div>
-                      <div style={{ fontSize: '12px', color: colors.text.muted }}>
+                      <div style={styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.muted })}>
                         {user?.roles?.[0] || 'Member'}
                       </div>
                     </div>
                   </button>
 
-                  {/* Profile Dropdown */}
                   {showProfileMenu && (
                     <>
-                      <div
-                        onClick={() => setShowProfileMenu(false)}
-                        style={{ position: 'fixed', inset: 0, zIndex: 40 }}
-                      />
-                      <div
-                        style={{
-                          position: 'absolute',
-                          right: 0,
-                          top: '100%',
-                          marginTop: '8px',
-                          width: '220px',
-                          backgroundColor: colors.bg.surface,
-                          border: `1px solid ${colors.border.default}`,
-                          borderRadius: '8px',
-                          boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3)',
-                          zIndex: 50,
-                          overflow: 'hidden',
-                        }}
-                      >
-                        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${colors.border.subtle}` }}>
-                          <div style={{ fontSize: '14px', fontWeight: 500, color: colors.text.primary }}>
+                      <div onClick={() => setShowProfileMenu(false)} style={styles({ position: 'fixed', inset: 0, zIndex: 40 })} />
+                      <div style={styles({
+                        position: 'absolute',
+                        right: 0,
+                        top: '100%',
+                        marginTop: spacing.sm,
+                        width: '220px',
+                        backgroundColor: colors.bg.surface,
+                        border: `1px solid ${colors.border.default}`,
+                        borderRadius: radius.lg,
+                        boxShadow: shadows.xl,
+                        zIndex: 50,
+                        overflow: 'hidden',
+                      })}>
+                        <div style={styles({ padding: `${spacing.md} ${spacing.lg}`, borderBottom: `1px solid ${colors.border.subtle}` })}>
+                          <div style={styles({ fontSize: ts.body.fontSize, fontWeight: ts.label.fontWeight, color: colors.text.primary })}>
                             {user?.name || 'User'}
                           </div>
-                          <div style={{ fontSize: '13px', color: colors.text.muted }}>
+                          <div style={styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.muted })}>
                             {user?.email || ''}
                           </div>
                         </div>
-                        <div style={{ padding: '8px' }}>
-                          {[
-                            { icon: User, label: 'Profile' },
-                            { icon: Settings, label: 'Settings' },
-                          ].map((item) => (
+                        <div style={styles({ padding: spacing.sm })}>
+                          {[{ icon: User, label: 'Profile' }, { icon: Settings, label: 'Settings' }].map((item) => (
                             <button
                               key={item.label}
-                              style={{
+                              style={styles({
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: '10px',
+                                gap: spacing.sm,
                                 width: '100%',
-                                padding: '10px 12px',
+                                padding: `${spacing.sm} ${spacing.md}`,
                                 background: 'none',
                                 border: 'none',
-                                borderRadius: '6px',
+                                borderRadius: radius.md,
                                 color: colors.text.primary,
-                                fontSize: '14px',
+                                fontSize: ts.body.fontSize,
                                 cursor: 'pointer',
                                 textAlign: 'left',
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.backgroundColor = colors.bg.elevated;
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.backgroundColor = 'transparent';
-                              }}
+                              })}
                             >
                               <item.icon size={16} style={{ color: colors.text.muted }} />
                               {item.label}
                             </button>
                           ))}
                         </div>
-                        <div style={{ padding: '8px', borderTop: `1px solid ${colors.border.subtle}` }}>
+                        <div style={styles({ padding: spacing.sm, borderTop: `1px solid ${colors.border.subtle}` })}>
                           <button
-                            onClick={() => {
-                              setShowProfileMenu(false);
-                              onLogout?.();
-                            }}
-                            style={{
+                            onClick={() => { setShowProfileMenu(false); onLogout?.(); }}
+                            style={styles({
                               display: 'flex',
                               alignItems: 'center',
-                              gap: '10px',
+                              gap: spacing.sm,
                               width: '100%',
-                              padding: '10px 12px',
+                              padding: `${spacing.sm} ${spacing.md}`,
                               background: 'none',
                               border: 'none',
-                              borderRadius: '6px',
+                              borderRadius: radius.md,
                               color: colors.error.default,
-                              fontSize: '14px',
+                              fontSize: ts.body.fontSize,
                               cursor: 'pointer',
                               textAlign: 'left',
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.backgroundColor = 'transparent';
-                            }}
+                            })}
                           >
                             <LogOut size={16} />
                             Sign Out
@@ -837,24 +638,74 @@ export function DashboardShell({
 
           {/* Page Content */}
           <main
-            style={{
+            style={styles({
               flex: 1,
               overflow: 'auto',
-              padding: '24px',
+              padding: spacing['2xl'],
               backgroundColor: colors.bg.page,
-            }}
-            onClick={() => {
-              setShowNotifications(false);
-              setShowProfileMenu(false);
-            }}
+            })}
+            onClick={() => { setShowNotifications(false); setShowProfileMenu(false); }}
           >
-            <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
+            <div style={styles({ maxWidth: '1280px', margin: '0 auto' })}>
               <UiKitProvider kit={erpKit}>{children}</UiKitProvider>
             </div>
           </main>
         </div>
       </div>
     </ShellContext.Provider>
+  );
+}
+
+// =============================================================================
+// MAIN COMPONENT
+// =============================================================================
+
+interface DashboardShellProps {
+  children: React.ReactNode;
+  config?: Partial<ShellConfig>;
+  navItems?: NavItem[];
+  user?: ShellUser | null;
+  activePath?: string;
+  pageTitle?: string;
+  onNavigate?: (path: string) => void;
+  onLogout?: () => void;
+  initialNotifications?: Notification[];
+}
+
+export function DashboardShell({
+  children,
+  config: configProp = {},
+  navItems = [],
+  user = null,
+  activePath = '/',
+  onNavigate,
+  onLogout,
+  initialNotifications = [],
+}: DashboardShellProps) {
+  const config: ShellConfig = {
+    brandName: configProp.brandName || 'HIT',
+    logoUrl: configProp.logoUrl,
+    sidebarPosition: configProp.sidebarPosition || 'left',
+    showNotifications: configProp.showNotifications ?? true,
+    showThemeToggle: configProp.showThemeToggle ?? false,
+    showUserMenu: configProp.showUserMenu ?? true,
+    defaultTheme: 'dark',
+  };
+
+  return (
+    <ThemeProvider defaultTheme="dark">
+      <ShellContent
+        config={config}
+        navItems={navItems}
+        user={user}
+        activePath={activePath}
+        onNavigate={onNavigate}
+        onLogout={onLogout}
+        initialNotifications={initialNotifications}
+      >
+        {children}
+      </ShellContent>
+    </ThemeProvider>
   );
 }
 

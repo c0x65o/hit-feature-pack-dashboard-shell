@@ -3,35 +3,8 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 import { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import { Menu, Bell, User, Settings, LogOut, ChevronRight, ChevronDown, } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
-import { UiKitProvider } from '@hit/ui-kit';
+import { UiKitProvider, ThemeProvider, useThemeTokens, styles } from '@hit/ui-kit';
 import { erpKit } from '../kit';
-// =============================================================================
-// DESIGN SYSTEM (matches kit.ts exactly)
-// =============================================================================
-const colors = {
-    bg: {
-        page: '#0a0a0f',
-        surface: '#12121a',
-        elevated: '#1a1a24',
-        sidebar: '#0d0d12',
-    },
-    border: {
-        subtle: '#1f1f2e',
-        default: '#2a2a3d',
-    },
-    text: {
-        primary: '#f4f4f5',
-        secondary: '#a1a1aa',
-        muted: '#71717a',
-    },
-    primary: {
-        default: '#3b82f6',
-        hover: '#2563eb',
-    },
-    error: {
-        default: '#ef4444',
-    },
-};
 const ShellContext = createContext(null);
 export function useShell() {
     const context = useContext(ShellContext);
@@ -42,27 +15,22 @@ export function useShell() {
 // =============================================================================
 // NAV GROUP HELPERS
 // =============================================================================
-/** Group configuration with display labels */
 const groupConfig = {
     main: { label: 'MAIN', order: 1 },
     system: { label: 'SYSTEM', order: 2 },
 };
-/** Group nav items by their group property, sorted by weight within each group */
 function groupNavItems(items) {
     const groups = {};
-    // Group items
     items.forEach((item) => {
-        const group = item.group || 'main'; // Default to 'main' if no group specified
+        const group = item.group || 'main';
         if (!groups[group]) {
             groups[group] = [];
         }
         groups[group].push(item);
     });
-    // Sort items within each group by weight
     Object.keys(groups).forEach((group) => {
         groups[group].sort((a, b) => (a.weight ?? 500) - (b.weight ?? 500));
     });
-    // Convert to array and sort groups by their configured order
     return Object.entries(groups)
         .map(([group, items]) => ({
         group,
@@ -81,7 +49,6 @@ function groupNavItems(items) {
 function isFlagEnabled(flag, cfg, authFeatures) {
     if (!flag)
         return true;
-    // First check auth module features (snake_case from API)
     if (authFeatures) {
         const authLookup = {
             'auth.allowSignup': 'allow_signup',
@@ -104,7 +71,6 @@ function isFlagEnabled(flag, cfg, authFeatures) {
             return authFeatures[authKey] !== false;
         }
     }
-    // Fallback to hit-config.json (camelCase)
     const auth = cfg?.auth || {};
     const admin = cfg?.admin || {};
     const lookup = {
@@ -143,11 +109,11 @@ function filterNavByFlags(items, cfg, authFeatures) {
     });
 }
 function NavItemComponent({ item, level = 0, activePath, onNavigate }) {
-    const { expandedNodes, toggleNode, setMenuOpen } = useShell();
+    const { expandedNodes, toggleNode } = useShell();
+    const { colors, radius, textStyles: ts, spacing } = useThemeTokens();
     const hasChildren = item.children && item.children.length > 0;
     const isExpanded = expandedNodes.has(item.id);
     const isActive = activePath === item.path || (hasChildren && item.children?.some(child => child.path === activePath));
-    // Get icon component
     const iconName = item.icon
         ? item.icon.charAt(0).toUpperCase() + item.icon.slice(1).replace(/-([a-z])/g, (g) => g[1].toUpperCase())
         : '';
@@ -165,139 +131,82 @@ function NavItemComponent({ item, level = 0, activePath, onNavigate }) {
             else if (typeof window !== 'undefined') {
                 window.location.href = item.path;
             }
-            // Menu stays open - don't auto-close on navigation
         }
     };
-    // Check if any child is active (for highlighting parent)
     const hasActiveChild = hasChildren && item.children?.some(child => child.path === activePath);
-    return (_jsxs("div", { children: [_jsxs("button", { onClick: handleClick, style: {
+    return (_jsxs("div", { children: [_jsxs("button", { onClick: handleClick, style: styles({
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '10px',
+                    gap: spacing.sm,
                     width: level > 0 ? `calc(100% - ${level * 12}px)` : '100%',
-                    padding: level > 0 ? '8px 12px 8px 36px' : '10px 12px',
+                    padding: level > 0 ? `${spacing.sm} ${spacing.md} ${spacing.sm} ${spacing['3xl']}` : `${spacing.sm} ${spacing.md}`,
                     marginLeft: level > 0 ? `${level * 12}px` : '0',
-                    marginBottom: '2px',
-                    fontSize: level === 0 ? '14px' : '13px',
-                    fontWeight: level === 0 ? '500' : '400',
-                    color: (isActive && !hasChildren) ? '#ffffff' : hasActiveChild ? colors.text.primary : colors.text.secondary,
+                    marginBottom: spacing.px,
+                    fontSize: level === 0 ? ts.body.fontSize : ts.bodySmall.fontSize,
+                    fontWeight: level === 0 ? ts.label.fontWeight : ts.body.fontWeight,
+                    color: (isActive && !hasChildren) ? colors.text.inverse : hasActiveChild ? colors.text.primary : colors.text.secondary,
                     backgroundColor: (isActive && !hasChildren) ? colors.primary.default : 'transparent',
                     border: 'none',
-                    borderRadius: '6px',
+                    borderRadius: radius.md,
                     cursor: 'pointer',
                     textAlign: 'left',
                     transition: 'all 150ms ease',
-                }, onMouseEnter: (e) => {
-                    if (!(isActive && !hasChildren)) {
-                        e.currentTarget.style.backgroundColor = colors.bg.elevated;
-                        e.currentTarget.style.color = colors.text.primary;
-                    }
-                }, onMouseLeave: (e) => {
-                    if (!(isActive && !hasChildren)) {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                        e.currentTarget.style.color = hasActiveChild ? colors.text.primary : colors.text.secondary;
-                    }
-                }, children: [IconComponent && _jsx(IconComponent, { size: 18, style: { flexShrink: 0 } }), _jsx("span", { style: { flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, children: item.label }), item.badge !== undefined && (_jsx("span", { style: {
-                            backgroundColor: '#ef4444',
-                            color: '#ffffff',
+                }), children: [IconComponent && _jsx(IconComponent, { size: 18, style: { flexShrink: 0 } }), _jsx("span", { style: styles({ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }), children: item.label }), item.badge !== undefined && (_jsx("span", { style: styles({
+                            backgroundColor: colors.error.default,
+                            color: colors.text.inverse,
                             fontSize: '11px',
                             fontWeight: 600,
                             padding: '2px 6px',
-                            borderRadius: '10px',
+                            borderRadius: radius.full,
                             minWidth: '20px',
                             textAlign: 'center',
-                        }, children: item.badge })), hasChildren && (_jsx("span", { style: { display: 'flex', marginRight: '-4px' }, children: isExpanded ? _jsx(ChevronDown, { size: 16 }) : _jsx(ChevronRight, { size: 16 }) }))] }), hasChildren && isExpanded && (_jsx("div", { style: { marginTop: '2px' }, children: item.children.map((child, idx) => (_jsx(NavItemComponent, { item: { ...child, id: `${item.id}-${idx}` }, level: level + 1, activePath: activePath, onNavigate: onNavigate }, `${item.id}-${idx}`))) }))] }));
+                        }), children: item.badge })), hasChildren && (_jsx("span", { style: styles({ display: 'flex', marginRight: '-4px' }), children: isExpanded ? _jsx(ChevronDown, { size: 16 }) : _jsx(ChevronRight, { size: 16 }) }))] }), hasChildren && isExpanded && (_jsx("div", { style: styles({ marginTop: spacing.px }), children: item.children.map((child, idx) => (_jsx(NavItemComponent, { item: { ...child, id: `${item.id}-${idx}` }, level: level + 1, activePath: activePath, onNavigate: onNavigate }, `${item.id}-${idx}`))) }))] }));
 }
 // =============================================================================
 // NAV GROUP HEADER COMPONENT
 // =============================================================================
 function NavGroupHeader({ label }) {
-    return (_jsx("div", { style: {
-            padding: '16px 12px 8px',
+    const { colors, textStyles: ts, spacing } = useThemeTokens();
+    return (_jsx("div", { style: styles({
+            padding: `${spacing.lg} ${spacing.md} ${spacing.sm}`,
             fontSize: '11px',
             fontWeight: 600,
             color: colors.text.muted,
             letterSpacing: '0.05em',
             textTransform: 'uppercase',
-        }, children: label }));
+        }), children: label }));
 }
-// Module-level cache to persist state across client-side navigations
-let menuStateCache = null;
-let hitConfigCache = null;
-let authConfigCache = null;
-export function DashboardShell({ children, config: configProp = {}, navItems = [], user = null, activePath = '/', onNavigate, onLogout, initialNotifications = [], }) {
-    // Initialize from cache or localStorage (client-only, no SSR concerns with ssr:false)
+function ShellContent({ children, config, navItems, user, activePath, onNavigate, onLogout, initialNotifications, }) {
+    const { colors, radius, textStyles: ts, spacing, shadows } = useThemeTokens();
     const [menuOpen, setMenuOpenState] = useState(() => {
-        if (menuStateCache !== null)
-            return menuStateCache;
-        const saved = localStorage.getItem('dashboard-shell-menu-open');
-        const value = saved !== 'false'; // default to true
-        menuStateCache = value;
-        return value;
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('dashboard-shell-menu-open');
+            return saved !== 'false';
+        }
+        return true;
     });
     const [expandedNodes, setExpandedNodes] = useState(new Set());
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const [showNotifications, setShowNotifications] = useState(false);
-    const [notifications, setNotifications] = useState(initialNotifications);
-    const [hitConfig, setHitConfig] = useState(hitConfigCache);
-    const [authConfig, setAuthConfig] = useState(authConfigCache);
-    // Wrapper to update both state and cache
+    const [notifications] = useState(initialNotifications);
+    const [hitConfig, setHitConfig] = useState(null);
+    const [authConfig, setAuthConfig] = useState(null);
     const setMenuOpen = useCallback((open) => {
-        menuStateCache = open;
         setMenuOpenState(open);
-        localStorage.setItem('dashboard-shell-menu-open', String(open));
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('dashboard-shell-menu-open', String(open));
+        }
     }, []);
-    // Load hit-config.json and auth config once
     useEffect(() => {
-        // Load hit-config.json
-        if (!hitConfigCache) {
-            fetch('/hit-config.json')
-                .then((res) => res.json())
-                .then((data) => {
-                hitConfigCache = data;
-                setHitConfig(data);
-            })
-                .catch(() => setHitConfig(null));
-        }
-        // Load auth module config
-        if (!authConfigCache) {
-            fetch('/api/proxy/auth/config')
-                .then((res) => res.json())
-                .then((data) => {
-                const features = data.features || {};
-                authConfigCache = features;
-                setAuthConfig(features);
-            })
-                .catch(() => {
-                // If fetch fails, try to use hit-config.json auth section
-                if (hitConfigCache?.auth) {
-                    const mapped = {
-                        allow_signup: hitConfigCache.auth.allowSignup,
-                        password_reset: hitConfigCache.auth.passwordReset,
-                        two_factor_auth: hitConfigCache.auth.twoFactorAuth,
-                        audit_log: hitConfigCache.auth.auditLog,
-                        magic_link_login: hitConfigCache.auth.magicLinkLogin,
-                        email_verification: hitConfigCache.auth.emailVerification,
-                    };
-                    authConfigCache = mapped;
-                    setAuthConfig(mapped);
-                }
-                else {
-                    setAuthConfig(null);
-                }
-            });
-        }
+        fetch('/hit-config.json')
+            .then((res) => res.json())
+            .then((data) => setHitConfig(data))
+            .catch(() => setHitConfig(null));
+        fetch('/api/proxy/auth/config')
+            .then((res) => res.json())
+            .then((data) => setAuthConfig(data.features || {}))
+            .catch(() => setAuthConfig(null));
     }, []);
-    const config = {
-        brandName: configProp.brandName || 'HIT',
-        logoUrl: configProp.logoUrl,
-        sidebarPosition: configProp.sidebarPosition || 'left',
-        showNotifications: configProp.showNotifications ?? true,
-        showThemeToggle: configProp.showThemeToggle ?? false, // Disabled for now - dark only
-        showUserMenu: configProp.showUserMenu ?? true,
-        defaultTheme: 'dark',
-    };
-    // Set data-theme on document for CSS variable theming
     useEffect(() => {
         if (typeof document !== 'undefined') {
             document.documentElement.setAttribute('data-theme', 'dark');
@@ -323,7 +232,6 @@ export function DashboardShell({ children, config: configProp = {}, navItems = [
         expandedNodes,
         toggleNode,
     };
-    // Icon button style helper
     const iconButtonStyle = {
         display: 'flex',
         alignItems: 'center',
@@ -332,188 +240,155 @@ export function DashboardShell({ children, config: configProp = {}, navItems = [
         height: '40px',
         background: 'none',
         border: 'none',
-        borderRadius: '8px',
+        borderRadius: radius.lg,
         color: colors.text.secondary,
         cursor: 'pointer',
         transition: 'all 150ms ease',
     };
-    // Menu state is used directly (no hydration concerns with ssr:false)
     const showSidebar = menuOpen;
-    return (_jsx(ShellContext.Provider, { value: contextValue, children: _jsxs("div", { style: {
+    return (_jsx(ShellContext.Provider, { value: contextValue, children: _jsxs("div", { style: styles({
                 display: 'flex',
                 height: '100vh',
                 backgroundColor: colors.bg.page,
                 color: colors.text.primary,
-            }, children: [_jsxs("aside", { style: {
+            }), children: [_jsxs("aside", { style: styles({
                         width: showSidebar ? '280px' : '0px',
                         minWidth: showSidebar ? '280px' : '0px',
                         height: '100%',
-                        backgroundColor: colors.bg.sidebar,
+                        backgroundColor: colors.bg.muted,
                         borderRight: showSidebar ? `1px solid ${colors.border.subtle}` : 'none',
                         display: 'flex',
                         flexDirection: 'column',
                         overflow: 'hidden',
                         flexShrink: 0,
-                    }, children: [_jsxs("div", { style: {
+                    }), children: [_jsxs("div", { style: styles({
                                 height: '64px',
                                 minWidth: '280px',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'space-between',
-                                padding: '0 16px',
+                                padding: `0 ${spacing.lg}`,
                                 borderBottom: `1px solid ${colors.border.subtle}`,
                                 flexShrink: 0,
-                            }, children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '10px' }, children: [_jsx("div", { style: {
+                            }), children: [_jsxs("div", { style: styles({ display: 'flex', alignItems: 'center', gap: spacing.sm }), children: [_jsx("div", { style: styles({
                                                 width: '32px',
                                                 height: '32px',
-                                                background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
-                                                borderRadius: '8px',
+                                                background: `linear-gradient(135deg, ${colors.primary.default}, ${colors.accent.default})`,
+                                                borderRadius: radius.lg,
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
                                                 overflow: 'hidden',
-                                            }, children: config.logoUrl ? (_jsx("img", { src: config.logoUrl, alt: config.brandName, style: { width: '20px', height: '20px', objectFit: 'contain' } })) : (_jsx("span", { style: { color: '#fff', fontWeight: 700, fontSize: '14px' }, children: config.brandName.charAt(0) })) }), _jsx("span", { style: { fontSize: '16px', fontWeight: 600, color: colors.text.primary }, children: config.brandName })] }), _jsx("button", { onClick: () => setMenuOpen(false), style: {
-                                        ...iconButtonStyle,
-                                        width: '36px',
-                                        height: '36px',
-                                    }, onMouseEnter: (e) => {
-                                        e.currentTarget.style.backgroundColor = colors.bg.elevated;
-                                    }, onMouseLeave: (e) => {
-                                        e.currentTarget.style.backgroundColor = 'transparent';
-                                    }, children: _jsx(Menu, { size: 20 }) })] }), _jsx("nav", { style: {
+                                            }), children: config.logoUrl ? (_jsx("img", { src: config.logoUrl, alt: config.brandName, style: { width: '20px', height: '20px', objectFit: 'contain' } })) : (_jsx("span", { style: styles({ color: colors.text.inverse, fontWeight: 700, fontSize: ts.body.fontSize }), children: config.brandName.charAt(0) })) }), _jsx("span", { style: styles({ fontSize: ts.heading3.fontSize, fontWeight: ts.heading3.fontWeight, color: colors.text.primary }), children: config.brandName })] }), _jsx("button", { onClick: () => setMenuOpen(false), style: { ...iconButtonStyle, width: '36px', height: '36px' }, children: _jsx(Menu, { size: 20 }) })] }), _jsx("nav", { style: styles({
                                 flex: 1,
                                 overflowY: 'auto',
-                                padding: '8px 12px',
+                                padding: `${spacing.sm} ${spacing.md}`,
                                 minWidth: '280px',
-                            }, children: groupNavItems(filterNavByFlags(navItems, hitConfig, authConfig)).map((group) => (_jsxs("div", { children: [_jsx(NavGroupHeader, { label: group.label }), group.items.map((item) => (_jsx(NavItemComponent, { item: item, activePath: activePath, onNavigate: onNavigate }, item.id)))] }, group.group))) }), _jsx("div", { style: {
-                                padding: '16px',
+                            }), children: groupNavItems(filterNavByFlags(navItems, hitConfig, authConfig)).map((group) => (_jsxs("div", { children: [_jsx(NavGroupHeader, { label: group.label }), group.items.map((item) => (_jsx(NavItemComponent, { item: item, activePath: activePath, onNavigate: onNavigate }, item.id)))] }, group.group))) }), _jsx("div", { style: styles({
+                                padding: spacing.lg,
                                 borderTop: `1px solid ${colors.border.subtle}`,
                                 flexShrink: 0,
                                 minWidth: '280px',
-                            }, children: _jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: colors.text.muted }, children: [_jsx("div", { style: {
+                            }), children: _jsxs("div", { style: styles({ display: 'flex', alignItems: 'center', gap: spacing.sm, fontSize: ts.bodySmall.fontSize, color: colors.text.muted }), children: [_jsx("div", { style: styles({
                                             width: '8px',
                                             height: '8px',
-                                            backgroundColor: '#22c55e',
-                                            borderRadius: '50%',
-                                        } }), _jsx("span", { children: "System Online" })] }) })] }), _jsxs("div", { style: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }, children: [_jsxs("header", { style: {
+                                            backgroundColor: colors.success.default,
+                                            borderRadius: radius.full,
+                                        }) }), _jsx("span", { children: "System Online" })] }) })] }), _jsxs("div", { style: styles({ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }), children: [_jsxs("header", { style: styles({
                                 height: '64px',
                                 backgroundColor: colors.bg.surface,
                                 borderBottom: `1px solid ${colors.border.subtle}`,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'space-between',
-                                padding: '0 24px',
+                                padding: `0 ${spacing['2xl']}`,
                                 flexShrink: 0,
-                            }, children: [_jsx("div", { style: { display: 'flex', alignItems: 'center', gap: '16px' }, children: !showSidebar && (_jsx("button", { onClick: () => setMenuOpen(true), style: iconButtonStyle, onMouseEnter: (e) => {
-                                            e.currentTarget.style.backgroundColor = colors.bg.elevated;
-                                        }, onMouseLeave: (e) => {
-                                            e.currentTarget.style.backgroundColor = 'transparent';
-                                        }, children: _jsx(Menu, { size: 20 }) })) }), _jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '8px' }, children: [config.showNotifications && (_jsx("div", { style: { position: 'relative' }, children: _jsxs("button", { onClick: () => {
-                                                    setShowNotifications(!showNotifications);
-                                                    setShowProfileMenu(false);
-                                                }, style: iconButtonStyle, onMouseEnter: (e) => {
-                                                    e.currentTarget.style.backgroundColor = colors.bg.elevated;
-                                                }, onMouseLeave: (e) => {
-                                                    e.currentTarget.style.backgroundColor = 'transparent';
-                                                }, children: [_jsx(Bell, { size: 20 }), unreadCount > 0 && (_jsx("span", { style: {
+                            }), children: [_jsx("div", { style: styles({ display: 'flex', alignItems: 'center', gap: spacing.lg }), children: !showSidebar && (_jsx("button", { onClick: () => setMenuOpen(true), style: iconButtonStyle, children: _jsx(Menu, { size: 20 }) })) }), _jsxs("div", { style: styles({ display: 'flex', alignItems: 'center', gap: spacing.sm }), children: [config.showNotifications && (_jsx("div", { style: { position: 'relative' }, children: _jsxs("button", { onClick: () => { setShowNotifications(!showNotifications); setShowProfileMenu(false); }, style: iconButtonStyle, children: [_jsx(Bell, { size: 20 }), unreadCount > 0 && (_jsx("span", { style: styles({
                                                             position: 'absolute',
                                                             top: '4px',
                                                             right: '4px',
                                                             width: '18px',
                                                             height: '18px',
                                                             backgroundColor: colors.error.default,
-                                                            color: '#fff',
+                                                            color: colors.text.inverse,
                                                             fontSize: '11px',
                                                             fontWeight: 600,
-                                                            borderRadius: '50%',
+                                                            borderRadius: radius.full,
                                                             display: 'flex',
                                                             alignItems: 'center',
                                                             justifyContent: 'center',
-                                                        }, children: unreadCount > 9 ? '9+' : unreadCount }))] }) })), config.showUserMenu && (_jsxs("div", { style: { position: 'relative' }, children: [_jsxs("button", { onClick: () => {
-                                                        setShowProfileMenu(!showProfileMenu);
-                                                        setShowNotifications(false);
-                                                    }, style: {
+                                                        }), children: unreadCount > 9 ? '9+' : unreadCount }))] }) })), config.showUserMenu && (_jsxs("div", { style: { position: 'relative' }, children: [_jsxs("button", { onClick: () => { setShowProfileMenu(!showProfileMenu); setShowNotifications(false); }, style: styles({
                                                         display: 'flex',
                                                         alignItems: 'center',
-                                                        gap: '12px',
-                                                        padding: '6px 12px 6px 6px',
+                                                        gap: spacing.md,
+                                                        padding: `${spacing.xs} ${spacing.md} ${spacing.xs} ${spacing.xs}`,
                                                         background: 'none',
                                                         border: 'none',
-                                                        borderRadius: '8px',
+                                                        borderRadius: radius.lg,
                                                         cursor: 'pointer',
-                                                        transition: 'all 150ms ease',
-                                                    }, onMouseEnter: (e) => {
-                                                        e.currentTarget.style.backgroundColor = colors.bg.elevated;
-                                                    }, onMouseLeave: (e) => {
-                                                        e.currentTarget.style.backgroundColor = 'transparent';
-                                                    }, children: [_jsx("div", { style: {
+                                                    }), children: [_jsx("div", { style: styles({
                                                                 width: '36px',
                                                                 height: '36px',
-                                                                background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
-                                                                borderRadius: '50%',
+                                                                background: `linear-gradient(135deg, ${colors.primary.default}, ${colors.accent.default})`,
+                                                                borderRadius: radius.full,
                                                                 display: 'flex',
                                                                 alignItems: 'center',
                                                                 justifyContent: 'center',
-                                                            }, children: _jsx(User, { size: 18, style: { color: '#fff' } }) }), _jsxs("div", { style: { textAlign: 'left' }, children: [_jsx("div", { style: { fontSize: '14px', fontWeight: 500, color: colors.text.primary }, children: user?.name || user?.email || 'User' }), _jsx("div", { style: { fontSize: '12px', color: colors.text.muted }, children: user?.roles?.[0] || 'Member' })] })] }), showProfileMenu && (_jsxs(_Fragment, { children: [_jsx("div", { onClick: () => setShowProfileMenu(false), style: { position: 'fixed', inset: 0, zIndex: 40 } }), _jsxs("div", { style: {
+                                                            }), children: _jsx(User, { size: 18, style: { color: colors.text.inverse } }) }), _jsxs("div", { style: styles({ textAlign: 'left' }), children: [_jsx("div", { style: styles({ fontSize: ts.body.fontSize, fontWeight: ts.label.fontWeight, color: colors.text.primary }), children: user?.name || user?.email || 'User' }), _jsx("div", { style: styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.muted }), children: user?.roles?.[0] || 'Member' })] })] }), showProfileMenu && (_jsxs(_Fragment, { children: [_jsx("div", { onClick: () => setShowProfileMenu(false), style: styles({ position: 'fixed', inset: 0, zIndex: 40 }) }), _jsxs("div", { style: styles({
                                                                 position: 'absolute',
                                                                 right: 0,
                                                                 top: '100%',
-                                                                marginTop: '8px',
+                                                                marginTop: spacing.sm,
                                                                 width: '220px',
                                                                 backgroundColor: colors.bg.surface,
                                                                 border: `1px solid ${colors.border.default}`,
-                                                                borderRadius: '8px',
-                                                                boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3)',
+                                                                borderRadius: radius.lg,
+                                                                boxShadow: shadows.xl,
                                                                 zIndex: 50,
                                                                 overflow: 'hidden',
-                                                            }, children: [_jsxs("div", { style: { padding: '12px 16px', borderBottom: `1px solid ${colors.border.subtle}` }, children: [_jsx("div", { style: { fontSize: '14px', fontWeight: 500, color: colors.text.primary }, children: user?.name || 'User' }), _jsx("div", { style: { fontSize: '13px', color: colors.text.muted }, children: user?.email || '' })] }), _jsx("div", { style: { padding: '8px' }, children: [
-                                                                        { icon: User, label: 'Profile' },
-                                                                        { icon: Settings, label: 'Settings' },
-                                                                    ].map((item) => (_jsxs("button", { style: {
+                                                            }), children: [_jsxs("div", { style: styles({ padding: `${spacing.md} ${spacing.lg}`, borderBottom: `1px solid ${colors.border.subtle}` }), children: [_jsx("div", { style: styles({ fontSize: ts.body.fontSize, fontWeight: ts.label.fontWeight, color: colors.text.primary }), children: user?.name || 'User' }), _jsx("div", { style: styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.muted }), children: user?.email || '' })] }), _jsx("div", { style: styles({ padding: spacing.sm }), children: [{ icon: User, label: 'Profile' }, { icon: Settings, label: 'Settings' }].map((item) => (_jsxs("button", { style: styles({
                                                                             display: 'flex',
                                                                             alignItems: 'center',
-                                                                            gap: '10px',
+                                                                            gap: spacing.sm,
                                                                             width: '100%',
-                                                                            padding: '10px 12px',
+                                                                            padding: `${spacing.sm} ${spacing.md}`,
                                                                             background: 'none',
                                                                             border: 'none',
-                                                                            borderRadius: '6px',
+                                                                            borderRadius: radius.md,
                                                                             color: colors.text.primary,
-                                                                            fontSize: '14px',
+                                                                            fontSize: ts.body.fontSize,
                                                                             cursor: 'pointer',
                                                                             textAlign: 'left',
-                                                                        }, onMouseEnter: (e) => {
-                                                                            e.currentTarget.style.backgroundColor = colors.bg.elevated;
-                                                                        }, onMouseLeave: (e) => {
-                                                                            e.currentTarget.style.backgroundColor = 'transparent';
-                                                                        }, children: [_jsx(item.icon, { size: 16, style: { color: colors.text.muted } }), item.label] }, item.label))) }), _jsx("div", { style: { padding: '8px', borderTop: `1px solid ${colors.border.subtle}` }, children: _jsxs("button", { onClick: () => {
-                                                                            setShowProfileMenu(false);
-                                                                            onLogout?.();
-                                                                        }, style: {
+                                                                        }), children: [_jsx(item.icon, { size: 16, style: { color: colors.text.muted } }), item.label] }, item.label))) }), _jsx("div", { style: styles({ padding: spacing.sm, borderTop: `1px solid ${colors.border.subtle}` }), children: _jsxs("button", { onClick: () => { setShowProfileMenu(false); onLogout?.(); }, style: styles({
                                                                             display: 'flex',
                                                                             alignItems: 'center',
-                                                                            gap: '10px',
+                                                                            gap: spacing.sm,
                                                                             width: '100%',
-                                                                            padding: '10px 12px',
+                                                                            padding: `${spacing.sm} ${spacing.md}`,
                                                                             background: 'none',
                                                                             border: 'none',
-                                                                            borderRadius: '6px',
+                                                                            borderRadius: radius.md,
                                                                             color: colors.error.default,
-                                                                            fontSize: '14px',
+                                                                            fontSize: ts.body.fontSize,
                                                                             cursor: 'pointer',
                                                                             textAlign: 'left',
-                                                                        }, onMouseEnter: (e) => {
-                                                                            e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
-                                                                        }, onMouseLeave: (e) => {
-                                                                            e.currentTarget.style.backgroundColor = 'transparent';
-                                                                        }, children: [_jsx(LogOut, { size: 16 }), "Sign Out"] }) })] })] }))] }))] })] }), _jsx("main", { style: {
+                                                                        }), children: [_jsx(LogOut, { size: 16 }), "Sign Out"] }) })] })] }))] }))] })] }), _jsx("main", { style: styles({
                                 flex: 1,
                                 overflow: 'auto',
-                                padding: '24px',
+                                padding: spacing['2xl'],
                                 backgroundColor: colors.bg.page,
-                            }, onClick: () => {
-                                setShowNotifications(false);
-                                setShowProfileMenu(false);
-                            }, children: _jsx("div", { style: { maxWidth: '1280px', margin: '0 auto' }, children: _jsx(UiKitProvider, { kit: erpKit, children: children }) }) })] })] }) }));
+                            }), onClick: () => { setShowNotifications(false); setShowProfileMenu(false); }, children: _jsx("div", { style: styles({ maxWidth: '1280px', margin: '0 auto' }), children: _jsx(UiKitProvider, { kit: erpKit, children: children }) }) })] })] }) }));
+}
+export function DashboardShell({ children, config: configProp = {}, navItems = [], user = null, activePath = '/', onNavigate, onLogout, initialNotifications = [], }) {
+    const config = {
+        brandName: configProp.brandName || 'HIT',
+        logoUrl: configProp.logoUrl,
+        sidebarPosition: configProp.sidebarPosition || 'left',
+        showNotifications: configProp.showNotifications ?? true,
+        showThemeToggle: configProp.showThemeToggle ?? false,
+        showUserMenu: configProp.showUserMenu ?? true,
+        defaultTheme: 'dark',
+    };
+    return (_jsx(ThemeProvider, { defaultTheme: "dark", children: _jsx(ShellContent, { config: config, navItems: navItems, user: user, activePath: activePath, onNavigate: onNavigate, onLogout: onLogout, initialNotifications: initialNotifications, children: children }) }));
 }
 export default DashboardShell;
