@@ -232,16 +232,22 @@ function ShellContent({ children, config, navItems, user, activePath, onNavigate
             if (savedMenuOpen !== null) {
                 setMenuOpenState(savedMenuOpen !== 'false');
             }
-            // Restore expanded nodes
+            // Restore expanded nodes (but start collapsed by default - only restore if user explicitly expanded something)
             const savedNodes = localStorage.getItem('dashboard-shell-expanded-nodes');
             if (savedNodes) {
                 try {
-                    setExpandedNodes(new Set(JSON.parse(savedNodes)));
+                    const parsed = JSON.parse(savedNodes);
+                    // Only restore if there are actually expanded nodes (user explicitly expanded something)
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        setExpandedNodes(new Set(parsed));
+                    }
+                    // Otherwise, keep it collapsed (empty Set)
                 }
                 catch {
-                    // Invalid JSON, ignore
+                    // Invalid JSON, ignore - start collapsed
                 }
             }
+            // Note: Nav starts collapsed by default (empty Set) - nodes only expand when user clicks
         }
     }, []);
     const toggleNode = useCallback((nodeId) => {
