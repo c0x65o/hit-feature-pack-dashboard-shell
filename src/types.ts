@@ -1,4 +1,9 @@
 /**
+ * Navigation group names
+ */
+export type NavGroup = 'main' | 'system' | string;
+
+/**
  * Navigation item structure for sidebar tree
  */
 export interface NavItem {
@@ -9,6 +14,12 @@ export interface NavItem {
   roles?: string[];
   showWhen?: 'authenticated' | 'unauthenticated' | 'always';
   children?: Omit<NavItem, 'children'>[];
+  /** Group this item belongs to (e.g., 'main', 'system') */
+  group?: NavGroup;
+  /** Sort weight within group (lower = higher in list) */
+  weight?: number;
+  /** Badge text or count to show */
+  badge?: string | number;
 }
 
 /**

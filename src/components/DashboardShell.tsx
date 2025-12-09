@@ -68,6 +68,48 @@ export function useShell() {
 }
 
 // =============================================================================
+// NAV GROUP HELPERS
+// =============================================================================
+
+/** Group configuration with display labels */
+const groupConfig: Record<string, { label: string; order: number }> = {
+  main: { label: 'MAIN', order: 1 },
+  system: { label: 'SYSTEM', order: 2 },
+};
+
+/** Group nav items by their group property, sorted by weight within each group */
+function groupNavItems(items: NavItem[]): { group: string; label: string; items: NavItem[] }[] {
+  const groups: Record<string, NavItem[]> = {};
+
+  // Group items
+  items.forEach((item) => {
+    const group = item.group || 'main'; // Default to 'main' if no group specified
+    if (!groups[group]) {
+      groups[group] = [];
+    }
+    groups[group].push(item);
+  });
+
+  // Sort items within each group by weight
+  Object.keys(groups).forEach((group) => {
+    groups[group].sort((a, b) => (a.weight ?? 500) - (b.weight ?? 500));
+  });
+
+  // Convert to array and sort groups by their configured order
+  return Object.entries(groups)
+    .map(([group, items]) => ({
+      group,
+      label: groupConfig[group]?.label || group.toUpperCase(),
+      items,
+    }))
+    .sort((a, b) => {
+      const orderA = groupConfig[a.group]?.order ?? 999;
+      const orderB = groupConfig[b.group]?.order ?? 999;
+      return orderA - orderB;
+    });
+}
+
+// =============================================================================
 // NAV ITEM COMPONENT
 // =============================================================================
 
@@ -82,7 +124,7 @@ function NavItemComponent({ item, level = 0, activePath, onNavigate }: NavItemCo
   const { expandedNodes, toggleNode, setMenuOpen } = useShell();
   const hasChildren = item.children && item.children.length > 0;
   const isExpanded = expandedNodes.has(item.id);
-  const isActive = activePath === item.path;
+  const isActive = activePath === item.path || (hasChildren && item.children?.some(child => child.path === activePath));
 
   // Get icon component
   const iconName = item.icon
@@ -105,6 +147,9 @@ function NavItemComponent({ item, level = 0, activePath, onNavigate }: NavItemCo
     }
   };
 
+  // Check if any child is active (for highlighting parent)
+  const hasActiveChild = hasChildren && item.children?.some(child => child.path === activePath);
+
   return (
     <div>
       <button
@@ -113,14 +158,14 @@ function NavItemComponent({ item, level = 0, activePath, onNavigate }: NavItemCo
           display: 'flex',
           alignItems: 'center',
           gap: '10px',
-          width: '100%',
-          padding: '10px 12px',
+          width: level > 0 ? `calc(100% - ${level * 12}px)` : '100%',
+          padding: level > 0 ? '8px 12px 8px 36px' : '10px 12px',
           marginLeft: level > 0 ? `${level * 12}px` : '0',
           marginBottom: '2px',
           fontSize: level === 0 ? '14px' : '13px',
           fontWeight: level === 0 ? '500' : '400',
-          color: isActive ? '#ffffff' : colors.text.secondary,
-          backgroundColor: isActive ? colors.primary.default : 'transparent',
+          color: (isActive && !hasChildren) ? '#ffffff' : hasActiveChild ? colors.text.primary : colors.text.secondary,
+          backgroundColor: (isActive && !hasChildren) ? colors.primary.default : 'transparent',
           border: 'none',
           borderRadius: '6px',
           cursor: 'pointer',
@@ -128,27 +173,44 @@ function NavItemComponent({ item, level = 0, activePath, onNavigate }: NavItemCo
           transition: 'all 150ms ease',
         }}
         onMouseEnter={(e) => {
-          if (!isActive) {
+          if (!(isActive && !hasChildren)) {
             e.currentTarget.style.backgroundColor = colors.bg.elevated;
             e.currentTarget.style.color = colors.text.primary;
           }
         }}
         onMouseLeave={(e) => {
-          if (!isActive) {
+          if (!(isActive && !hasChildren)) {
             e.currentTarget.style.backgroundColor = 'transparent';
-            e.currentTarget.style.color = colors.text.secondary;
+            e.currentTarget.style.color = hasActiveChild ? colors.text.primary : colors.text.secondary;
           }
         }}
       >
-        {hasChildren && (
-          <span style={{ display: 'flex', marginLeft: '-2px' }}>
-            {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          </span>
-        )}
         {IconComponent && <IconComponent size={18} style={{ flexShrink: 0 }} />}
         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {item.label}
         </span>
+        {/* Badge */}
+        {item.badge !== undefined && (
+          <span
+            style={{
+              backgroundColor: '#ef4444',
+              color: '#ffffff',
+              fontSize: '11px',
+              fontWeight: 600,
+              padding: '2px 6px',
+              borderRadius: '10px',
+              minWidth: '20px',
+              textAlign: 'center',
+            }}
+          >
+            {item.badge}
+          </span>
+        )}
+        {hasChildren && (
+          <span style={{ display: 'flex', marginRight: '-4px' }}>
+            {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          </span>
+        )}
       </button>
       {hasChildren && isExpanded && (
         <div style={{ marginTop: '2px' }}>
@@ -163,6 +225,27 @@ function NavItemComponent({ item, level = 0, activePath, onNavigate }: NavItemCo
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// =============================================================================
+// NAV GROUP HEADER COMPONENT
+// =============================================================================
+
+function NavGroupHeader({ label }: { label: string }) {
+  return (
+    <div
+      style={{
+        padding: '16px 12px 8px',
+        fontSize: '11px',
+        fontWeight: 600,
+        color: colors.text.muted,
+        letterSpacing: '0.05em',
+        textTransform: 'uppercase',
+      }}
+    >
+      {label}
     </div>
   );
 }
@@ -362,17 +445,22 @@ export function DashboardShell({
             style={{
               flex: 1,
               overflowY: 'auto',
-              padding: '16px 12px',
+              padding: '8px 12px',
               minWidth: '280px',
             }}
           >
-            {navItems.map((item) => (
-              <NavItemComponent
-                key={item.id}
-                item={item}
-                activePath={activePath}
-                onNavigate={onNavigate}
-              />
+            {groupNavItems(navItems).map((group) => (
+              <div key={group.group}>
+                <NavGroupHeader label={group.label} />
+                {group.items.map((item) => (
+                  <NavItemComponent
+                    key={item.id}
+                    item={item}
+                    activePath={activePath}
+                    onNavigate={onNavigate}
+                  />
+                ))}
+              </div>
             ))}
           </nav>
 
