@@ -102,7 +102,7 @@ function NavItemComponent({ item, level = 0, activePath, onNavigate }: NavItemCo
       } else if (typeof window !== 'undefined') {
         window.location.href = item.path;
       }
-      setMenuOpen(false);
+      // Menu stays open - don't auto-close on navigation
     }
   };
 
@@ -194,11 +194,25 @@ export function DashboardShell({
   onLogout,
   initialNotifications = [],
 }: DashboardShellProps) {
-  const [menuOpen, setMenuOpen] = useState(false);
+  // Load persisted menu state from localStorage
+  const [menuOpen, setMenuOpen] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('dashboard-shell-menu-open');
+      return saved === 'true';
+    }
+    return false;
+  });
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>(initialNotifications);
+
+  // Persist menu state to localStorage whenever it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('dashboard-shell-menu-open', String(menuOpen));
+    }
+  }, [menuOpen]);
 
   const config: ShellConfig = {
     brandName: configProp.brandName || 'HIT',
@@ -264,18 +278,7 @@ export function DashboardShell({
           color: colors.text.primary,
         }}
       >
-        {/* Sidebar Overlay */}
-        {menuOpen && (
-          <div
-            onClick={() => setMenuOpen(false)}
-            style={{
-              position: 'fixed',
-              inset: 0,
-              backgroundColor: 'rgba(0, 0, 0, 0.6)',
-              zIndex: 40,
-            }}
-          />
-        )}
+        {/* Sidebar Overlay - removed click-to-close, menu stays open until manually closed */}
 
         {/* Sidebar */}
         <aside
