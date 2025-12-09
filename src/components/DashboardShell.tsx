@@ -113,16 +113,45 @@ function groupNavItems(items: NavItem[]): { group: string; label: string; items:
 // FEATURE FLAG HELPERS
 // =============================================================================
 
-function isFlagEnabled(flag?: string, cfg?: any): boolean {
+function isFlagEnabled(flag?: string, cfg?: any, authFeatures?: any): boolean {
   if (!flag) return true;
+  
+  // First check auth module features (snake_case from API)
+  if (authFeatures) {
+    const authLookup: Record<string, string> = {
+      'auth.allowSignup': 'allow_signup',
+      'auth.allow_signup': 'allow_signup',
+      'auth.emailVerification': 'email_verification',
+      'auth.email_verification': 'email_verification',
+      'auth.passwordLogin': 'password_login',
+      'auth.password_login': 'password_login',
+      'auth.passwordReset': 'password_reset',
+      'auth.password_reset': 'password_reset',
+      'auth.magicLinkLogin': 'magic_link_login',
+      'auth.magic_link_login': 'magic_link_login',
+      'auth.twoFactorAuth': 'two_factor_auth',
+      'auth.two_factor_auth': 'two_factor_auth',
+      'auth.auditLog': 'audit_log',
+      'auth.audit_log': 'audit_log',
+    };
+    
+    const authKey = authLookup[flag];
+    if (authKey && authFeatures[authKey] !== undefined) {
+      return authFeatures[authKey] !== false;
+    }
+  }
+  
+  // Fallback to hit-config.json (camelCase)
   const auth = cfg?.auth || {};
   const admin = cfg?.admin || {};
   const lookup: Record<string, boolean | undefined> = {
     'auth.allowSignup': auth.allowSignup,
     'auth.emailVerification': auth.emailVerification,
     'auth.passwordLogin': auth.passwordLogin,
+    'auth.passwordReset': auth.passwordReset,
     'auth.magicLinkLogin': auth.magicLinkLogin,
     'auth.twoFactorAuth': auth.twoFactorAuth,
+    'auth.auditLog': auth.auditLog,
     'auth.show2faSetup': auth.show2faSetup,
     'auth.showSocialLogin': auth.showSocialLogin,
     'admin.showDashboard': admin.showDashboard,
@@ -137,14 +166,14 @@ function isFlagEnabled(flag?: string, cfg?: any): boolean {
   return value !== undefined ? value : true;
 }
 
-function filterNavByFlags(items: NavItem[], cfg?: any): NavItem[] {
+function filterNavByFlags(items: NavItem[], cfg?: any, authFeatures?: any): NavItem[] {
   return items
-    .filter((item) => isFlagEnabled(item.featureFlag, cfg))
+    .filter((item) => isFlagEnabled(item.featureFlag, cfg, authFeatures))
     .map((item) => {
       if (!item.children) {
         return item;
       }
-      const children = filterNavByFlags(item.children as NavItem[], cfg);
+      const children = filterNavByFlags(item.children as NavItem[], cfg, authFeatures);
       return {
         ...item,
         children: children.length > 0 ? children : undefined,
@@ -312,6 +341,7 @@ interface DashboardShellProps {
 // Module-level cache to persist state across client-side navigations
 let menuStateCache: boolean | null = null;
 let hitConfigCache: any | null = null;
+let authConfigCache: any | null = null;
 
 export function DashboardShell({
   children,
@@ -336,6 +366,7 @@ export function DashboardShell({
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>(initialNotifications);
   const [hitConfig, setHitConfig] = useState<any | null>(hitConfigCache);
+  const [authConfig, setAuthConfig] = useState<any | null>(authConfigCache);
 
   // Wrapper to update both state and cache
   const setMenuOpen = useCallback((open: boolean) => {
@@ -344,8 +375,9 @@ export function DashboardShell({
     localStorage.setItem('dashboard-shell-menu-open', String(open));
   }, []);
 
-  // Load hit-config.json once
+  // Load hit-config.json and auth config once
   useEffect(() => {
+    // Load hit-config.json
     if (!hitConfigCache) {
       fetch('/hit-config.json')
         .then((res) => res.json())
@@ -354,6 +386,34 @@ export function DashboardShell({
           setHitConfig(data);
         })
         .catch(() => setHitConfig(null));
+    }
+
+    // Load auth module config
+    if (!authConfigCache) {
+      fetch('/api/proxy/auth/config')
+        .then((res) => res.json())
+        .then((data) => {
+          const features = data.features || {};
+          authConfigCache = features;
+          setAuthConfig(features);
+        })
+        .catch(() => {
+          // If fetch fails, try to use hit-config.json auth section
+          if (hitConfigCache?.auth) {
+            const mapped = {
+              allow_signup: hitConfigCache.auth.allowSignup,
+              password_reset: hitConfigCache.auth.passwordReset,
+              two_factor_auth: hitConfigCache.auth.twoFactorAuth,
+              audit_log: hitConfigCache.auth.auditLog,
+              magic_link_login: hitConfigCache.auth.magicLinkLogin,
+              email_verification: hitConfigCache.auth.emailVerification,
+            };
+            authConfigCache = mapped;
+            setAuthConfig(mapped);
+          } else {
+            setAuthConfig(null);
+          }
+        });
     }
   }, []);
 
@@ -507,7 +567,7 @@ export function DashboardShell({
               minWidth: '280px',
             }}
           >
-            {groupNavItems(filterNavByFlags(navItems, hitConfig)).map((group) => (
+            {groupNavItems(filterNavByFlags(navItems, hitConfig, authConfig)).map((group) => (
               <div key={group.group}>
                 <NavGroupHeader label={group.label} />
                 {group.items.map((item) => (
