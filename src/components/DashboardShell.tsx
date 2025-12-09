@@ -126,14 +126,36 @@ function isFlagEnabled(flag?: string, cfg?: any, authFeatures?: any): boolean {
   return value !== undefined ? value : true;
 }
 
-function filterNavByFlags(items: NavItem[], cfg?: any, authFeatures?: any): NavItem[] {
+function filterNavByFlags(
+  items: NavItem[], 
+  cfg?: any, 
+  authFeatures?: any,
+  userRoles?: string[]
+): NavItem[] {
   return items
-    .filter((item) => isFlagEnabled(item.featureFlag, cfg, authFeatures))
+    .filter((item) => {
+      // Check feature flag
+      if (!isFlagEnabled(item.featureFlag, cfg, authFeatures)) {
+        return false;
+      }
+      // Check role-based access
+      if (item.roles && item.roles.length > 0) {
+        // If item requires specific roles, user must have at least one
+        if (!userRoles || userRoles.length === 0) {
+          return false;
+        }
+        const hasRequiredRole = item.roles.some(role => userRoles.includes(role));
+        if (!hasRequiredRole) {
+          return false;
+        }
+      }
+      return true;
+    })
     .map((item) => {
       if (!item.children) {
         return item;
       }
-      const children = filterNavByFlags(item.children as NavItem[], cfg, authFeatures);
+      const children = filterNavByFlags(item.children as NavItem[], cfg, authFeatures, userRoles);
       return {
         ...item,
         children: children.length > 0 ? children : undefined,
@@ -465,7 +487,7 @@ function ShellContent({
             padding: `${spacing.sm} ${spacing.md}`,
             minWidth: '280px',
           })}>
-            {groupNavItems(filterNavByFlags(navItems, hitConfig, authConfig)).map((group) => (
+            {groupNavItems(filterNavByFlags(navItems, hitConfig, authConfig, user?.roles)).map((group) => (
               <div key={group.group}>
                 <NavGroupHeader label={group.label} />
                 {group.items.map((item) => (

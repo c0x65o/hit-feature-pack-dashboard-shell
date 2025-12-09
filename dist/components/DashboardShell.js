@@ -94,14 +94,31 @@ function isFlagEnabled(flag, cfg, authFeatures) {
     const value = lookup[flag];
     return value !== undefined ? value : true;
 }
-function filterNavByFlags(items, cfg, authFeatures) {
+function filterNavByFlags(items, cfg, authFeatures, userRoles) {
     return items
-        .filter((item) => isFlagEnabled(item.featureFlag, cfg, authFeatures))
+        .filter((item) => {
+        // Check feature flag
+        if (!isFlagEnabled(item.featureFlag, cfg, authFeatures)) {
+            return false;
+        }
+        // Check role-based access
+        if (item.roles && item.roles.length > 0) {
+            // If item requires specific roles, user must have at least one
+            if (!userRoles || userRoles.length === 0) {
+                return false;
+            }
+            const hasRequiredRole = item.roles.some(role => userRoles.includes(role));
+            if (!hasRequiredRole) {
+                return false;
+            }
+        }
+        return true;
+    })
         .map((item) => {
         if (!item.children) {
             return item;
         }
-        const children = filterNavByFlags(item.children, cfg, authFeatures);
+        const children = filterNavByFlags(item.children, cfg, authFeatures, userRoles);
         return {
             ...item,
             children: children.length > 0 ? children : undefined,
@@ -311,7 +328,7 @@ function ShellContent({ children, config, navItems, user, activePath, onNavigate
                                 overflowY: 'auto',
                                 padding: `${spacing.sm} ${spacing.md}`,
                                 minWidth: '280px',
-                            }), children: groupNavItems(filterNavByFlags(navItems, hitConfig, authConfig)).map((group) => (_jsxs("div", { children: [_jsx(NavGroupHeader, { label: group.label }), group.items.map((item) => (_jsx(NavItemComponent, { item: item, activePath: activePath, onNavigate: onNavigate }, item.id)))] }, group.group))) }), _jsx("div", { style: styles({
+                            }), children: groupNavItems(filterNavByFlags(navItems, hitConfig, authConfig, user?.roles)).map((group) => (_jsxs("div", { children: [_jsx(NavGroupHeader, { label: group.label }), group.items.map((item) => (_jsx(NavItemComponent, { item: item, activePath: activePath, onNavigate: onNavigate }, item.id)))] }, group.group))) }), _jsx("div", { style: styles({
                                 padding: spacing.lg,
                                 borderTop: `1px solid ${colors.border.subtle}`,
                                 flexShrink: 0,
