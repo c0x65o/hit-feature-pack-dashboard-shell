@@ -310,8 +310,7 @@ interface DashboardShellProps {
 }
 
 // Module-level cache to persist state across client-side navigations
-// This is populated AFTER first hydration, so subsequent navigations are instant
-let menuStateCache: { loaded: boolean; open: boolean } = { loaded: false, open: true };
+let menuStateCache: boolean | null = null;
 let hitConfigCache: any | null = null;
 
 export function DashboardShell({
@@ -324,9 +323,14 @@ export function DashboardShell({
   onLogout,
   initialNotifications = [],
 }: DashboardShellProps) {
-  // Use cached value if available (for client-side navigation), otherwise default to true
-  // This ensures server and initial client render match (both true)
-  const [menuOpen, setMenuOpenState] = useState(() => menuStateCache.loaded ? menuStateCache.open : true);
+  // Initialize from cache or localStorage (client-only, no SSR concerns with ssr:false)
+  const [menuOpen, setMenuOpenState] = useState(() => {
+    if (menuStateCache !== null) return menuStateCache;
+    const saved = localStorage.getItem('dashboard-shell-menu-open');
+    const value = saved !== 'false'; // default to true
+    menuStateCache = value;
+    return value;
+  });
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -335,27 +339,13 @@ export function DashboardShell({
 
   // Wrapper to update both state and cache
   const setMenuOpen = useCallback((open: boolean) => {
-    menuStateCache = { loaded: true, open };
+    menuStateCache = open;
     setMenuOpenState(open);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('dashboard-shell-menu-open', String(open));
-    }
+    localStorage.setItem('dashboard-shell-menu-open', String(open));
   }, []);
 
-  // On first mount, load from localStorage and update cache
+  // Load hit-config.json once
   useEffect(() => {
-    // Only load from localStorage if we haven't cached yet
-    if (!menuStateCache.loaded) {
-      const saved = localStorage.getItem('dashboard-shell-menu-open');
-      const savedValue = saved !== 'false'; // default to true
-      menuStateCache = { loaded: true, open: savedValue };
-      // Only update state if different from default
-      if (!savedValue) {
-        setMenuOpenState(false);
-      }
-    }
-
-    // Load hit-config.json once
     if (!hitConfigCache) {
       fetch('/hit-config.json')
         .then((res) => res.json())
@@ -421,7 +411,7 @@ export function DashboardShell({
     transition: 'all 150ms ease',
   };
 
-  // Use menu state directly (cached across navigations)
+  // Menu state is used directly (no hydration concerns with ssr:false)
   const showSidebar = menuOpen;
 
   return (
