@@ -12,6 +12,66 @@ export function useShell() {
         throw new Error('useShell must be used within DashboardShell');
     return context;
 }
+const THEME_STORAGE_KEY = 'dashboard-shell-theme';
+const THEME_COOKIE_KEY = 'dashboard-shell-theme';
+const TOKEN_COOKIE_KEY = 'hit_token';
+function getCookieValue(name) {
+    if (typeof document === 'undefined')
+        return null;
+    const match = document.cookie.split(';').map((c) => c.trim()).find((cookie) => cookie.startsWith(`${name}=`));
+    return match ? decodeURIComponent(match.split('=').slice(1).join('=')) : null;
+}
+function getStoredToken() {
+    const cookieToken = getCookieValue(TOKEN_COOKIE_KEY);
+    if (cookieToken)
+        return cookieToken;
+    if (typeof localStorage !== 'undefined') {
+        return localStorage.getItem(TOKEN_COOKIE_KEY);
+    }
+    return null;
+}
+function getSavedThemePreference() {
+    if (typeof localStorage !== 'undefined') {
+        const saved = localStorage.getItem(THEME_STORAGE_KEY);
+        if (saved === 'light' || saved === 'dark' || saved === 'system') {
+            return saved;
+        }
+    }
+    const cookiePref = getCookieValue(THEME_COOKIE_KEY);
+    if (cookiePref === 'light' || cookiePref === 'dark' || cookiePref === 'system') {
+        return cookiePref;
+    }
+    return null;
+}
+function resolveTheme(preference) {
+    if (preference === 'system') {
+        if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            return 'dark';
+        }
+        return 'light';
+    }
+    return preference;
+}
+function applyThemeToDocument(theme) {
+    if (typeof document === 'undefined')
+        return;
+    const root = document.documentElement;
+    root.setAttribute('data-theme', theme);
+    if (theme === 'dark') {
+        root.classList.add('dark');
+    }
+    else {
+        root.classList.remove('dark');
+    }
+}
+function persistThemePreference(preference) {
+    if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(THEME_STORAGE_KEY, preference);
+    }
+    if (typeof document !== 'undefined') {
+        document.cookie = `${THEME_COOKIE_KEY}=${preference}; path=/; max-age=31536000; SameSite=Lax`;
+    }
+}
 // =============================================================================
 // NAV GROUP HELPERS
 // =============================================================================

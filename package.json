@@ -1,6 +1,6 @@
 {
   "name": "@hit/feature-pack-dashboard-shell",
-  "version": "1.0.40",
+  "version": "1.0.41",
   "description": "Dashboard shell with sidebar, topbar, notifications, theme support, and ERP UI kit",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
