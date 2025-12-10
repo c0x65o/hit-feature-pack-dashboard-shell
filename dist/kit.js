@@ -10,79 +10,57 @@ import { X, Loader2, AlertCircle, CheckCircle, AlertTriangle, Info, ChevronDown 
 // 0: 0, 1: 4px, 2: 8px, 3: 12px, 4: 16px, 5: 20px, 6: 24px, 8: 32px, 10: 40px, 12: 48px
 // COLORS - Uses CSS variables for theme support
 // These will automatically switch between light and dark based on data-theme attribute
-function getComputedStyleValue(property) {
-    if (typeof window === 'undefined')
-        return '#000000';
-    return getComputedStyle(document.documentElement).getPropertyValue(property).trim() || '#000000';
-}
+// Using CSS variable references that React will resolve at render time
 const colors = {
     // Backgrounds - use CSS variables that respond to theme
-    get bg() {
-        return {
-            page: getComputedStyleValue('--hit-background') || '#ffffff',
-            surface: getComputedStyleValue('--hit-surface') || '#ffffff',
-            elevated: getComputedStyleValue('--hit-surface-hover') || '#f8fafc',
-            input: getComputedStyleValue('--hit-input-bg') || '#ffffff',
-            muted: getComputedStyleValue('--hit-muted') || '#f1f5f9',
-        };
+    bg: {
+        page: 'var(--hit-background, #ffffff)',
+        surface: 'var(--hit-surface, #ffffff)',
+        elevated: 'var(--hit-surface-hover, #f8fafc)',
+        input: 'var(--hit-input-bg, #ffffff)',
+        muted: 'var(--hit-muted, #f1f5f9)',
     },
     // Borders
-    get border() {
-        return {
-            subtle: getComputedStyleValue('--hit-border') || '#e2e8f0',
-            default: getComputedStyleValue('--hit-border-strong') || '#cbd5e1',
-            focus: getComputedStyleValue('--hit-primary') || '#3b82f6',
-        };
+    border: {
+        subtle: 'var(--hit-border, #e2e8f0)',
+        default: 'var(--hit-border-strong, #cbd5e1)',
+        focus: 'var(--hit-primary, #3b82f6)',
     },
     // Text
-    get text() {
-        return {
-            primary: getComputedStyleValue('--hit-foreground') || '#0f172a',
-            secondary: getComputedStyleValue('--hit-muted-foreground') || '#64748b',
-            muted: getComputedStyleValue('--hit-input-placeholder') || '#9ca3af',
-            inverse: '#ffffff', // Always white for inverse text
-        };
+    text: {
+        primary: 'var(--hit-foreground, #0f172a)',
+        secondary: 'var(--hit-muted-foreground, #64748b)',
+        muted: 'var(--hit-input-placeholder, #9ca3af)',
+        inverse: '#ffffff', // Always white for inverse text
     },
     // Semantic colors - use CSS variables
-    get primary() {
-        return {
-            default: getComputedStyleValue('--hit-primary') || '#3b82f6',
-            hover: getComputedStyleValue('--hit-primary-hover') || '#2563eb',
-            muted: 'rgba(59, 130, 246, 0.15)',
-        };
+    primary: {
+        default: 'var(--hit-primary, #3b82f6)',
+        hover: 'var(--hit-primary-hover, #2563eb)',
+        muted: 'rgba(59, 130, 246, 0.15)',
     },
-    get success() {
-        return {
-            default: getComputedStyleValue('--hit-success') || '#22c55e',
-            muted: 'rgba(34, 197, 94, 0.15)',
-            border: 'rgba(34, 197, 94, 0.3)',
-        };
+    success: {
+        default: 'var(--hit-success, #22c55e)',
+        muted: 'rgba(34, 197, 94, 0.15)',
+        border: 'rgba(34, 197, 94, 0.3)',
     },
-    get warning() {
-        return {
-            default: getComputedStyleValue('--hit-warning') || '#f59e0b',
-            muted: 'rgba(245, 158, 11, 0.15)',
-            border: 'rgba(245, 158, 11, 0.3)',
-        };
+    warning: {
+        default: 'var(--hit-warning, #f59e0b)',
+        muted: 'rgba(245, 158, 11, 0.15)',
+        border: 'rgba(245, 158, 11, 0.3)',
     },
-    get error() {
-        return {
-            default: getComputedStyleValue('--hit-error') || '#ef4444',
-            muted: 'rgba(239, 68, 68, 0.15)',
-            border: 'rgba(239, 68, 68, 0.3)',
-        };
+    error: {
+        default: 'var(--hit-error, #ef4444)',
+        muted: 'rgba(239, 68, 68, 0.15)',
+        border: 'rgba(239, 68, 68, 0.3)',
     },
-    get info() {
-        return {
-            default: getComputedStyleValue('--hit-info') || '#06b6d4',
-            muted: 'rgba(6, 182, 212, 0.15)',
-            border: 'rgba(6, 182, 212, 0.3)',
-        };
+    info: {
+        default: 'var(--hit-info, #06b6d4)',
+        muted: 'rgba(6, 182, 212, 0.15)',
+        border: 'rgba(6, 182, 212, 0.3)',
     },
-    get accent() {
-        return {
-            default: getComputedStyleValue('--hit-accent') || '#8b5cf6',
-        };
+    accent: {
+        default: 'var(--hit-accent, #8b5cf6)',
     },
 };
 // SIZING
@@ -124,15 +102,15 @@ function injectGlobalStyles() {
     
     .hit-ui-kit input::placeholder,
     .hit-ui-kit textarea::placeholder {
-      color: ${colors.text.muted};
+      color: var(--hit-input-placeholder, #9ca3af);
       opacity: 1;
     }
     
     .hit-ui-kit input:focus,
     .hit-ui-kit textarea:focus,
     .hit-ui-kit select:focus {
-      border-color: ${colors.border.focus} !important;
-      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+      border-color: var(--hit-primary, #3b82f6) !important;
+      box-shadow: 0 0 0 3px var(--hit-primary-light, rgba(59, 130, 246, 0.15));
     }
   `;
     document.head.appendChild(style);

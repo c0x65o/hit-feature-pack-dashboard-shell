@@ -4,8 +4,7 @@ import { useState, useEffect, useCallback, createContext, useContext } from 'rea
 import { Menu, Bell, User, Settings, LogOut, ChevronRight, ChevronDown, } from 'lucide-react';
 import { Monitor, Moon, Sun, X } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
-import { UiKitProvider, ThemeProvider, useThemeTokens, styles } from '@hit/ui-kit';
-import { erpKit } from '../kit';
+import { UiKitProvider, ThemeProvider, useThemeTokens, useTheme, styles, defaultKit } from '@hit/ui-kit';
 const ShellContext = createContext(null);
 export function useShell() {
     const context = useContext(ShellContext);
@@ -205,6 +204,7 @@ function NavGroupHeader({ label }) {
 }
 function ShellContent({ children, config, navItems, user, activePath, onNavigate, onLogout, initialNotifications, }) {
     const { colors, radius, textStyles: ts, spacing, shadows } = useThemeTokens();
+    const { setTheme: setUiKitTheme } = useTheme();
     const [mounted, setMounted] = useState(false);
     const [menuOpen, setMenuOpenState] = useState(true);
     const [expandedNodes, setExpandedNodes] = useState(new Set());
@@ -242,7 +242,9 @@ function ShellContent({ children, config, navItems, user, activePath, onNavigate
         setResolvedTheme(resolved);
         applyThemeToDocument(resolved);
         persistThemePreference(preference);
-    }, []);
+        // Sync with @hit/ui-kit ThemeProvider so useThemeTokens() returns correct colors
+        setUiKitTheme(resolved);
+    }, [setUiKitTheme]);
     const loadInitialTheme = useCallback(() => {
         const saved = getSavedThemePreference();
         const defaultPref = hitConfig?.dashboardShell?.defaultTheme || config.defaultTheme || 'dark';
@@ -608,7 +610,7 @@ function ShellContent({ children, config, navItems, user, activePath, onNavigate
                                     overflow: 'auto',
                                     padding: spacing['2xl'],
                                     backgroundColor: colors.bg.page,
-                                }), onClick: () => { setShowNotifications(false); setShowProfileMenu(false); }, children: _jsx("div", { style: styles({ maxWidth: '1280px', margin: '0 auto' }), children: _jsx(UiKitProvider, { kit: erpKit, children: children }) }) })] })] }), showAppearanceModal && (_jsxs(_Fragment, { children: [_jsx("div", { onClick: closeAppearance, style: styles({
+                                }), onClick: () => { setShowNotifications(false); setShowProfileMenu(false); }, children: _jsx("div", { style: styles({ maxWidth: '1280px', margin: '0 auto' }), children: _jsx(UiKitProvider, { kit: defaultKit, children: children }) }) })] })] }), showAppearanceModal && (_jsxs(_Fragment, { children: [_jsx("div", { onClick: closeAppearance, style: styles({
                             position: 'fixed',
                             inset: 0,
                             backgroundColor: 'rgba(0,0,0,0.55)',

@@ -12,8 +12,7 @@ import {
 } from 'lucide-react';
 import { Monitor, Moon, Sun, X } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
-import { UiKitProvider, ThemeProvider, useThemeTokens, styles } from '@hit/ui-kit';
-import { erpKit } from '../kit';
+import { UiKitProvider, ThemeProvider, useThemeTokens, useTheme, styles, defaultKit } from '@hit/ui-kit';
 import type { NavItem, ShellUser, Notification, ShellConfig } from '../types';
 
 // =============================================================================
@@ -328,6 +327,7 @@ function ShellContent({
   initialNotifications,
 }: ShellContentProps) {
   const { colors, radius, textStyles: ts, spacing, shadows } = useThemeTokens();
+  const { setTheme: setUiKitTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
   const [menuOpen, setMenuOpenState] = useState(true);
@@ -368,7 +368,9 @@ function ShellContent({
     setResolvedTheme(resolved);
     applyThemeToDocument(resolved);
     persistThemePreference(preference);
-  }, []);
+    // Sync with @hit/ui-kit ThemeProvider so useThemeTokens() returns correct colors
+    setUiKitTheme(resolved);
+  }, [setUiKitTheme]);
 
   const loadInitialTheme = useCallback(() => {
     const saved = getSavedThemePreference();
@@ -913,7 +915,7 @@ function ShellContent({
             onClick={() => { setShowNotifications(false); setShowProfileMenu(false); }}
           >
             <div style={styles({ maxWidth: '1280px', margin: '0 auto' })}>
-              <UiKitProvider kit={erpKit}>{children}</UiKitProvider>
+              <UiKitProvider kit={defaultKit}>{children}</UiKitProvider>
             </div>
           </main>
         </div>

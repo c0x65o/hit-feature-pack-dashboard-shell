@@ -110,15 +110,15 @@ function injectGlobalStyles() {
     
     .hit-ui-kit input::placeholder,
     .hit-ui-kit textarea::placeholder {
-      color: ${colors.text.muted};
+      color: var(--hit-input-placeholder, #9ca3af);
       opacity: 1;
     }
     
     .hit-ui-kit input:focus,
     .hit-ui-kit textarea:focus,
     .hit-ui-kit select:focus {
-      border-color: ${colors.border.focus} !important;
-      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+      border-color: var(--hit-primary, #3b82f6) !important;
+      box-shadow: 0 0 0 3px var(--hit-primary-light, rgba(59, 130, 246, 0.15));
     }
   `;
   document.head.appendChild(style);
