@@ -334,9 +334,26 @@ function ShellContent({
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'appearance' | 'profile'>('appearance');
   const [notifications] = useState<Notification[]>(initialNotifications);
   const [hitConfig, setHitConfig] = useState<any | null>(null);
-  const [authConfig, setAuthConfig] = useState<any | null>(null);
+  const [currentUser, setCurrentUser] = useState<ShellUser | null>(user);
+  const [themePreference, setThemePreference] = useState<ThemePreference>('dark');
+  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('dark');
+  const [themeLoaded, setThemeLoaded] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    name: user?.name || '',
+    password: '',
+    confirmPassword: '',
+  });
+  const [profileMetadata, setProfileMetadata] = useState<Record<string, any>>({});
+  const [profileStatus, setProfileStatus] = useState<{ saving: boolean; error: string | null; success: string | null }>({
+    saving: false,
+    error: null,
+    success: null,
+  });
+  const [profileLoaded, setProfileLoaded] = useState(false);
 
   const setMenuOpen = useCallback((open: boolean) => {
     setMenuOpenState(open);
@@ -345,25 +362,58 @@ function ShellContent({
     }
   }, []);
 
+  const applyThemePreference = useCallback((preference: ThemePreference) => {
+    const resolved = resolveTheme(preference);
+    setThemePreference(preference);
+    setResolvedTheme(resolved);
+    applyThemeToDocument(resolved);
+    persistThemePreference(preference);
+  }, []);
+
+  const loadInitialTheme = useCallback(() => {
+    const saved = getSavedThemePreference();
+    const defaultPref = (hitConfig?.dashboardShell?.defaultTheme as ThemePreference | undefined) || config.defaultTheme || 'dark';
+    const preference = (saved || defaultPref || 'dark') as ThemePreference;
+    applyThemePreference(preference);
+    setThemeLoaded(true);
+  }, [applyThemePreference, hitConfig, config.defaultTheme]);
+
+  useEffect(() => {
+    if (!themeLoaded) {
+      loadInitialTheme();
+    }
+  }, [themeLoaded, loadInitialTheme]);
+
+  useEffect(() => {
+    if (themePreference !== 'system') return;
+    if (typeof window === 'undefined') return;
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = () => applyThemePreference('system');
+    media.addEventListener('change', handler);
+    return () => media.removeEventListener('change', handler);
+  }, [themePreference, applyThemePreference]);
+
+  useEffect(() => {
+    setCurrentUser(user || null);
+    setProfileForm((prev) => ({ ...prev, name: user?.name || prev.name || '' }));
+    setProfileLoaded(false);
+    setProfileMetadata({});
+    setProfileStatus((prev) => ({ ...prev, error: null, success: null }));
+  }, [user]);
+
   useEffect(() => {
     fetch('/hit-config.json')
       .then((res) => res.json())
       .then((data) => setHitConfig(data))
       .catch(() => setHitConfig(null));
-
-    fetch('/api/proxy/auth/config')
-      .then((res) => res.json())
-      .then((data) => setAuthConfig(data.features || {}))
-      .catch(() => setAuthConfig(null));
   }, []);
 
   // Load persisted state from localStorage on mount
   useEffect(() => {
-    setMounted(true);
-    if (typeof document !== 'undefined') {
-      document.documentElement.setAttribute('data-theme', 'dark');
-      document.documentElement.classList.add('dark');
+    if (!themeLoaded) {
+      loadInitialTheme();
     }
+    setMounted(true);
     if (typeof window !== 'undefined') {
       // Restore menu open state
       const savedMenuOpen = localStorage.getItem('dashboard-shell-menu-open');
@@ -386,7 +436,7 @@ function ShellContent({
       }
       // Note: Nav starts collapsed by default (empty Set) - nodes only expand when user clicks
     }
-  }, []);
+  }, [themeLoaded, loadInitialTheme]);
 
   const toggleNode = useCallback((nodeId: string) => {
     setExpandedNodes((prev) => {
@@ -403,6 +453,113 @@ function ShellContent({
       return next;
     });
   }, []);
+
+  const openSettings = useCallback((tab: 'appearance' | 'profile') => {
+    setSettingsTab(tab);
+    setShowSettingsModal(true);
+    setShowProfileMenu(false);
+    setShowNotifications(false);
+  }, []);
+
+  const closeSettings = useCallback(() => {
+    setShowSettingsModal(false);
+    setProfileStatus((prev) => ({ ...prev, error: null, success: null }));
+  }, []);
+
+  const fetchProfile = useCallback(async () => {
+    if (!currentUser?.email) return;
+    setProfileStatus((prev) => ({ ...prev, error: null, success: null }));
+    try {
+      const token = getStoredToken();
+      if (!token) {
+        throw new Error('You must be signed in to update your profile.');
+      }
+      const response = await fetch(`/api/proxy/auth/users/${encodeURIComponent(currentUser.email)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.detail || data?.error || 'Unable to load profile');
+      }
+      setProfileMetadata(data.metadata || {});
+      setProfileForm((prev) => ({ ...prev, name: data.metadata?.name ?? prev.name ?? '' }));
+      setProfileLoaded(true);
+    } catch (error) {
+      setProfileStatus((prev) => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to load profile',
+        success: null,
+      }));
+    }
+  }, [currentUser?.email]);
+
+  const handleProfileSave = useCallback(async () => {
+    if (!currentUser?.email) {
+      setProfileStatus({ saving: false, error: 'No user loaded.', success: null });
+      return;
+    }
+    if (profileForm.password && profileForm.password !== profileForm.confirmPassword) {
+      setProfileStatus({ saving: false, error: 'Passwords do not match.', success: null });
+      return;
+    }
+
+    setProfileStatus({ saving: true, error: null, success: null });
+    try {
+      const token = getStoredToken();
+      if (!token) {
+        throw new Error('You must be signed in to update your profile.');
+      }
+
+      const payload: Record<string, any> = {};
+      const nextMetadata = { ...profileMetadata };
+      if (profileForm.name) {
+        nextMetadata.name = profileForm.name;
+      }
+      if (Object.keys(nextMetadata).length > 0) {
+        payload.metadata = nextMetadata;
+      }
+      if (profileForm.password) {
+        payload.password = profileForm.password;
+      }
+
+      const response = await fetch(`/api/proxy/auth/users/${encodeURIComponent(currentUser.email)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.detail || data?.error || 'Failed to update profile');
+      }
+
+      setProfileMetadata(data.metadata || nextMetadata);
+      setCurrentUser((prev) => (prev ? { ...prev, name: profileForm.name || prev.name } : prev));
+      setProfileStatus({ saving: false, error: null, success: 'Profile updated successfully.' });
+      setProfileForm((prev) => ({ ...prev, password: '', confirmPassword: '' }));
+      setProfileLoaded(true);
+    } catch (error) {
+      setProfileStatus({
+        saving: false,
+        error: error instanceof Error ? error.message : 'Failed to update profile',
+        success: null,
+      });
+    }
+  }, [
+    currentUser?.email,
+    profileForm.confirmPassword,
+    profileForm.name,
+    profileForm.password,
+    profileMetadata,
+  ]);
+
+  useEffect(() => {
+    if (showSettingsModal && settingsTab === 'profile' && !profileLoaded && !profileStatus.saving) {
+      fetchProfile();
+    }
+  }, [fetchProfile, profileLoaded, profileStatus.saving, settingsTab, showSettingsModal]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
@@ -426,6 +583,11 @@ function ShellContent({
     cursor: 'pointer',
     transition: 'all 150ms ease',
   };
+
+  const settingsTabs: { key: 'appearance' | 'profile'; label: string }[] = [
+    { key: 'appearance', label: 'Appearance' },
+    { key: 'profile', label: 'Profile' },
+  ];
 
   const showSidebar = menuOpen;
 
@@ -507,7 +669,7 @@ function ShellContent({
             padding: `${spacing.sm} ${spacing.md}`,
             minWidth: '280px',
           })}>
-            {groupNavItems(filterNavByRoles(navItems, user?.roles)).map((group) => (
+            {groupNavItems(filterNavByRoles(navItems, currentUser?.roles)).map((group) => (
               <div key={group.group}>
                 <NavGroupHeader label={group.label} />
                 {group.items.map((item) => (
@@ -563,6 +725,15 @@ function ShellContent({
             </div>
 
             <div style={styles({ display: 'flex', alignItems: 'center', gap: spacing.sm })}>
+              {config.showThemeToggle && (
+                <button
+                  onClick={() => openSettings('appearance')}
+                  style={iconButtonStyle}
+                  aria-label="Theme settings"
+                >
+                  {resolvedTheme === 'dark' ? <Moon size={20} /> : <Sun size={20} />}
+                </button>
+              )}
               {config.showNotifications && (
                 <div style={{ position: 'relative' }}>
                   <button
@@ -621,10 +792,10 @@ function ShellContent({
                     </div>
                     <div style={styles({ textAlign: 'left' })}>
                       <div style={styles({ fontSize: ts.body.fontSize, fontWeight: ts.label.fontWeight, color: colors.text.primary })}>
-                        {user?.name || user?.email || 'User'}
+                        {currentUser?.name || currentUser?.email || 'User'}
                       </div>
                       <div style={styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.muted })}>
-                        {user?.roles?.[0] || 'Member'}
+                        {currentUser?.roles?.[0] || 'Member'}
                       </div>
                     </div>
                   </button>
@@ -647,35 +818,53 @@ function ShellContent({
                       })}>
                         <div style={styles({ padding: `${spacing.md} ${spacing.lg}`, borderBottom: `1px solid ${colors.border.subtle}` })}>
                           <div style={styles({ fontSize: ts.body.fontSize, fontWeight: ts.label.fontWeight, color: colors.text.primary })}>
-                            {user?.name || 'User'}
+                            {currentUser?.name || 'User'}
                           </div>
                           <div style={styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.muted })}>
-                            {user?.email || ''}
+                            {currentUser?.email || ''}
                           </div>
                         </div>
                         <div style={styles({ padding: spacing.sm })}>
-                          {[{ icon: User, label: 'Profile' }, { icon: Settings, label: 'Settings' }].map((item) => (
-                            <button
-                              key={item.label}
-                              style={styles({
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: spacing.sm,
-                                width: '100%',
-                                padding: `${spacing.sm} ${spacing.md}`,
-                                background: 'none',
-                                border: 'none',
-                                borderRadius: radius.md,
-                                color: colors.text.primary,
-                                fontSize: ts.body.fontSize,
-                                cursor: 'pointer',
-                                textAlign: 'left',
-                              })}
-                            >
-                              <item.icon size={16} style={{ color: colors.text.muted }} />
-                              {item.label}
-                            </button>
-                          ))}
+                          <button
+                            onClick={() => openSettings('profile')}
+                            style={styles({
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: spacing.sm,
+                              width: '100%',
+                              padding: `${spacing.sm} ${spacing.md}`,
+                              background: 'none',
+                              border: 'none',
+                              borderRadius: radius.md,
+                              color: colors.text.primary,
+                              fontSize: ts.body.fontSize,
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                            })}
+                          >
+                            <User size={16} style={{ color: colors.text.muted }} />
+                            Profile
+                          </button>
+                          <button
+                            onClick={() => openSettings('appearance')}
+                            style={styles({
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: spacing.sm,
+                              width: '100%',
+                              padding: `${spacing.sm} ${spacing.md}`,
+                              background: 'none',
+                              border: 'none',
+                              borderRadius: radius.md,
+                              color: colors.text.primary,
+                              fontSize: ts.body.fontSize,
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                            })}
+                          >
+                            <Settings size={16} style={{ color: colors.text.muted }} />
+                            Settings
+                          </button>
                         </div>
                         <div style={styles({ padding: spacing.sm, borderTop: `1px solid ${colors.border.subtle}` })}>
                           <button
@@ -723,6 +912,272 @@ function ShellContent({
           </main>
         </div>
       </div>
+
+      {showSettingsModal && (
+        <>
+          <div
+            onClick={closeSettings}
+            style={styles({
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(0,0,0,0.55)',
+              backdropFilter: 'blur(4px)',
+              zIndex: 90,
+            })}
+          />
+          <div
+            style={styles({
+              position: 'fixed',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: spacing['2xl'],
+              zIndex: 100,
+            })}
+          >
+            <div
+              style={styles({
+                width: 'min(640px, 100%)',
+                backgroundColor: colors.bg.surface,
+                borderRadius: radius.xl,
+                border: `1px solid ${colors.border.default}`,
+                boxShadow: shadows.xl,
+                overflow: 'hidden',
+              })}
+            >
+              <div
+                style={styles({
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: `${spacing.lg} ${spacing.xl}`,
+                  borderBottom: `1px solid ${colors.border.subtle}`,
+                })}
+              >
+                <div>
+                  <div style={styles({ fontSize: ts.heading3.fontSize, fontWeight: ts.heading3.fontWeight })}>User Settings</div>
+                  <div style={styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.muted })}>
+                    Manage your appearance and account details. Changes stay on this device unless saved.
+                  </div>
+                </div>
+                <button
+                  onClick={closeSettings}
+                  style={{
+                    ...iconButtonStyle,
+                    width: '36px',
+                    height: '36px',
+                    backgroundColor: colors.bg.muted,
+                  }}
+                  aria-label="Close settings"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div
+                style={styles({
+                  display: 'flex',
+                  gap: spacing.sm,
+                  padding: `${spacing.sm} ${spacing.xl}`,
+                  borderBottom: `1px solid ${colors.border.subtle}`,
+                })}
+              >
+                {settingsTabs.map((tab) => {
+                  const active = settingsTab === tab.key;
+                  return (
+                    <button
+                      key={tab.key}
+                      onClick={() => setSettingsTab(tab.key)}
+                      style={styles({
+                        padding: `${spacing.sm} ${spacing.md}`,
+                        borderRadius: radius.lg,
+                        border: 'none',
+                        backgroundColor: active ? colors.bg.muted : 'transparent',
+                        color: active ? colors.text.primary : colors.text.secondary,
+                        fontWeight: active ? ts.label.fontWeight : ts.body.fontWeight,
+                        cursor: 'pointer',
+                      })}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div style={styles({ padding: spacing.xl, display: 'flex', flexDirection: 'column', gap: spacing.xl })}>
+                {settingsTab === 'appearance' && (
+                  <div style={styles({ display: 'flex', flexDirection: 'column', gap: spacing.md })}>
+                    <div style={styles({ fontWeight: ts.label.fontWeight, fontSize: ts.body.fontSize })}>Theme</div>
+                    <div style={styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.muted })}>
+                      Switch between light and dark. We store your choice in a cookie and localStorage so it sticks across visits.
+                    </div>
+                    <div style={styles({ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: spacing.md })}>
+                      {[
+                        { value: 'light' as ThemePreference, label: 'Light', icon: <Sun size={16} /> },
+                        { value: 'dark' as ThemePreference, label: 'Dark', icon: <Moon size={16} /> },
+                        { value: 'system' as ThemePreference, label: 'System', icon: <Monitor size={16} /> },
+                      ].map((option) => {
+                        const active = themePreference === option.value;
+                        return (
+                          <button
+                            key={option.value}
+                            onClick={() => applyThemePreference(option.value)}
+                            style={styles({
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: spacing.sm,
+                              padding: `${spacing.md} ${spacing.lg}`,
+                              borderRadius: radius.lg,
+                              border: `1px solid ${active ? colors.border.strong : colors.border.subtle}`,
+                              backgroundColor: active ? colors.bg.muted : colors.bg.page,
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                              color: colors.text.primary,
+                              boxShadow: active ? shadows.md : 'none',
+                            })}
+                          >
+                            <span
+                              style={styles({
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: radius.full,
+                                backgroundColor: active ? colors.bg.muted : colors.bg.surface,
+                                display: 'grid',
+                                placeItems: 'center',
+                                color: active ? colors.primary.default : colors.text.secondary,
+                              })}
+                            >
+                              {option.icon}
+                            </span>
+                            <div style={styles({ display: 'flex', flexDirection: 'column', gap: spacing.px })}>
+                              <span style={styles({ fontWeight: ts.label.fontWeight })}>{option.label}</span>
+                              <span style={styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.muted })}>
+                                {option.value === 'system' ? 'Match your device preference' : `Force ${option.label.toLowerCase()} mode`}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.secondary })}>
+                      Using <strong>{resolvedTheme}</strong> theme (preference: {themePreference}).
+                    </div>
+                  </div>
+                )}
+
+                {settingsTab === 'profile' && (
+                  <div style={styles({ display: 'flex', flexDirection: 'column', gap: spacing.md })}>
+                    <div style={styles({ fontWeight: ts.label.fontWeight, fontSize: ts.body.fontSize })}>Profile</div>
+                    <div style={styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.muted })}>
+                      Update your display name and optionally set a new password. Password changes require admin rights in the auth service.
+                    </div>
+
+                    <label style={styles({ display: 'flex', flexDirection: 'column', gap: spacing.xs, fontSize: ts.bodySmall.fontSize })}>
+                      <span style={styles({ color: colors.text.secondary })}>Display name</span>
+                      <input
+                        value={profileForm.name}
+                        onChange={(e) => setProfileForm((prev) => ({ ...prev, name: e.target.value }))}
+                        placeholder="Your name"
+                        style={styles({
+                          padding: `${spacing.sm} ${spacing.md}`,
+                          borderRadius: radius.md,
+                          border: `1px solid ${colors.border.default}`,
+                          backgroundColor: colors.bg.page,
+                          color: colors.text.primary,
+                          fontSize: ts.body.fontSize,
+                        })}
+                      />
+                    </label>
+
+                    <label style={styles({ display: 'flex', flexDirection: 'column', gap: spacing.xs, fontSize: ts.bodySmall.fontSize })}>
+                      <span style={styles({ color: colors.text.secondary })}>New password</span>
+                      <input
+                        type="password"
+                        value={profileForm.password}
+                        onChange={(e) => setProfileForm((prev) => ({ ...prev, password: e.target.value }))}
+                        placeholder="Optional"
+                        style={styles({
+                          padding: `${spacing.sm} ${spacing.md}`,
+                          borderRadius: radius.md,
+                          border: `1px solid ${colors.border.default}`,
+                          backgroundColor: colors.bg.page,
+                          color: colors.text.primary,
+                          fontSize: ts.body.fontSize,
+                        })}
+                      />
+                    </label>
+
+                    <label style={styles({ display: 'flex', flexDirection: 'column', gap: spacing.xs, fontSize: ts.bodySmall.fontSize })}>
+                      <span style={styles({ color: colors.text.secondary })}>Confirm password</span>
+                      <input
+                        type="password"
+                        value={profileForm.confirmPassword}
+                        onChange={(e) => setProfileForm((prev) => ({ ...prev, confirmPassword: e.target.value }))}
+                        placeholder="Optional"
+                        style={styles({
+                          padding: `${spacing.sm} ${spacing.md}`,
+                          borderRadius: radius.md,
+                          border: `1px solid ${colors.border.default}`,
+                          backgroundColor: colors.bg.page,
+                          color: colors.text.primary,
+                          fontSize: ts.body.fontSize,
+                        })}
+                      />
+                    </label>
+
+                    {(profileStatus.error || profileStatus.success) && (
+                      <div
+                        style={styles({
+                          padding: `${spacing.sm} ${spacing.md}`,
+                          borderRadius: radius.md,
+                          backgroundColor: colors.bg.muted,
+                          color: profileStatus.error ? colors.error.default : colors.success.default,
+                          border: `1px solid ${profileStatus.error ? colors.error.default : colors.success.default}`,
+                        })}
+                      >
+                        {profileStatus.error || profileStatus.success}
+                      </div>
+                    )}
+
+                    <div style={styles({ display: 'flex', justifyContent: 'flex-end', gap: spacing.sm })}>
+                      <button
+                        onClick={closeSettings}
+                        style={styles({
+                          padding: `${spacing.sm} ${spacing.md}`,
+                          borderRadius: radius.md,
+                          border: `1px solid ${colors.border.default}`,
+                          backgroundColor: colors.bg.page,
+                          color: colors.text.primary,
+                          cursor: 'pointer',
+                        })}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleProfileSave}
+                        disabled={profileStatus.saving}
+                        style={styles({
+                          padding: `${spacing.sm} ${spacing.lg}`,
+                          borderRadius: radius.md,
+                          border: 'none',
+                          backgroundColor: colors.primary.default,
+                          color: colors.text.inverse,
+                          fontWeight: ts.label.fontWeight,
+                          cursor: profileStatus.saving ? 'wait' : 'pointer',
+                          opacity: profileStatus.saving ? 0.8 : 1,
+                        })}
+                      >
+                        {profileStatus.saving ? 'Saving…' : 'Save changes'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </ShellContext.Provider>
   );
 }
@@ -760,11 +1215,14 @@ export function DashboardShell({
     showNotifications: configProp.showNotifications ?? true,
     showThemeToggle: configProp.showThemeToggle ?? false,
     showUserMenu: configProp.showUserMenu ?? true,
-    defaultTheme: 'dark',
+    defaultTheme: configProp.defaultTheme || 'system',
   };
 
+  const providerDefaultTheme: 'light' | 'dark' =
+    config.defaultTheme === 'light' ? 'light' : config.defaultTheme === 'dark' ? 'dark' : 'dark';
+
   return (
-    <ThemeProvider defaultTheme="dark">
+    <ThemeProvider defaultTheme={providerDefaultTheme}>
       <ShellContent
         config={config}
         navItems={navItems}

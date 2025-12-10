@@ -2,6 +2,7 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import { Menu, Bell, User, Settings, LogOut, ChevronRight, ChevronDown, } from 'lucide-react';
+import { Monitor, Moon, Sun, X } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { UiKitProvider, ThemeProvider, useThemeTokens, styles } from '@hit/ui-kit';
 import { erpKit } from '../kit';
@@ -209,32 +210,80 @@ function ShellContent({ children, config, navItems, user, activePath, onNavigate
     const [expandedNodes, setExpandedNodes] = useState(new Set());
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const [showNotifications, setShowNotifications] = useState(false);
+    const [showSettingsModal, setShowSettingsModal] = useState(false);
+    const [settingsTab, setSettingsTab] = useState('appearance');
     const [notifications] = useState(initialNotifications);
     const [hitConfig, setHitConfig] = useState(null);
-    const [authConfig, setAuthConfig] = useState(null);
+    const [currentUser, setCurrentUser] = useState(user);
+    const [themePreference, setThemePreference] = useState('dark');
+    const [resolvedTheme, setResolvedTheme] = useState('dark');
+    const [themeLoaded, setThemeLoaded] = useState(false);
+    const [profileForm, setProfileForm] = useState({
+        name: user?.name || '',
+        password: '',
+        confirmPassword: '',
+    });
+    const [profileMetadata, setProfileMetadata] = useState({});
+    const [profileStatus, setProfileStatus] = useState({
+        saving: false,
+        error: null,
+        success: null,
+    });
+    const [profileLoaded, setProfileLoaded] = useState(false);
     const setMenuOpen = useCallback((open) => {
         setMenuOpenState(open);
         if (typeof window !== 'undefined') {
             localStorage.setItem('dashboard-shell-menu-open', String(open));
         }
     }, []);
+    const applyThemePreference = useCallback((preference) => {
+        const resolved = resolveTheme(preference);
+        setThemePreference(preference);
+        setResolvedTheme(resolved);
+        applyThemeToDocument(resolved);
+        persistThemePreference(preference);
+    }, []);
+    const loadInitialTheme = useCallback(() => {
+        const saved = getSavedThemePreference();
+        const defaultPref = hitConfig?.dashboardShell?.defaultTheme || config.defaultTheme || 'dark';
+        const preference = (saved || defaultPref || 'dark');
+        applyThemePreference(preference);
+        setThemeLoaded(true);
+    }, [applyThemePreference, hitConfig, config.defaultTheme]);
+    useEffect(() => {
+        if (!themeLoaded) {
+            loadInitialTheme();
+        }
+    }, [themeLoaded, loadInitialTheme]);
+    useEffect(() => {
+        if (themePreference !== 'system')
+            return;
+        if (typeof window === 'undefined')
+            return;
+        const media = window.matchMedia('(prefers-color-scheme: dark)');
+        const handler = () => applyThemePreference('system');
+        media.addEventListener('change', handler);
+        return () => media.removeEventListener('change', handler);
+    }, [themePreference, applyThemePreference]);
+    useEffect(() => {
+        setCurrentUser(user || null);
+        setProfileForm((prev) => ({ ...prev, name: user?.name || prev.name || '' }));
+        setProfileLoaded(false);
+        setProfileMetadata({});
+        setProfileStatus((prev) => ({ ...prev, error: null, success: null }));
+    }, [user]);
     useEffect(() => {
         fetch('/hit-config.json')
             .then((res) => res.json())
             .then((data) => setHitConfig(data))
             .catch(() => setHitConfig(null));
-        fetch('/api/proxy/auth/config')
-            .then((res) => res.json())
-            .then((data) => setAuthConfig(data.features || {}))
-            .catch(() => setAuthConfig(null));
     }, []);
     // Load persisted state from localStorage on mount
     useEffect(() => {
-        setMounted(true);
-        if (typeof document !== 'undefined') {
-            document.documentElement.setAttribute('data-theme', 'dark');
-            document.documentElement.classList.add('dark');
+        if (!themeLoaded) {
+            loadInitialTheme();
         }
+        setMounted(true);
         if (typeof window !== 'undefined') {
             // Restore menu open state
             const savedMenuOpen = localStorage.getItem('dashboard-shell-menu-open');
@@ -258,7 +307,7 @@ function ShellContent({ children, config, navItems, user, activePath, onNavigate
             }
             // Note: Nav starts collapsed by default (empty Set) - nodes only expand when user clicks
         }
-    }, []);
+    }, [themeLoaded, loadInitialTheme]);
     const toggleNode = useCallback((nodeId) => {
         setExpandedNodes((prev) => {
             const next = new Set(prev);
@@ -275,6 +324,107 @@ function ShellContent({ children, config, navItems, user, activePath, onNavigate
             return next;
         });
     }, []);
+    const openSettings = useCallback((tab) => {
+        setSettingsTab(tab);
+        setShowSettingsModal(true);
+        setShowProfileMenu(false);
+        setShowNotifications(false);
+    }, []);
+    const closeSettings = useCallback(() => {
+        setShowSettingsModal(false);
+        setProfileStatus((prev) => ({ ...prev, error: null, success: null }));
+    }, []);
+    const fetchProfile = useCallback(async () => {
+        if (!currentUser?.email)
+            return;
+        setProfileStatus((prev) => ({ ...prev, error: null, success: null }));
+        try {
+            const token = getStoredToken();
+            if (!token) {
+                throw new Error('You must be signed in to update your profile.');
+            }
+            const response = await fetch(`/api/proxy/auth/users/${encodeURIComponent(currentUser.email)}`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(data?.detail || data?.error || 'Unable to load profile');
+            }
+            setProfileMetadata(data.metadata || {});
+            setProfileForm((prev) => ({ ...prev, name: data.metadata?.name ?? prev.name ?? '' }));
+            setProfileLoaded(true);
+        }
+        catch (error) {
+            setProfileStatus((prev) => ({
+                ...prev,
+                error: error instanceof Error ? error.message : 'Failed to load profile',
+                success: null,
+            }));
+        }
+    }, [currentUser?.email]);
+    const handleProfileSave = useCallback(async () => {
+        if (!currentUser?.email) {
+            setProfileStatus({ saving: false, error: 'No user loaded.', success: null });
+            return;
+        }
+        if (profileForm.password && profileForm.password !== profileForm.confirmPassword) {
+            setProfileStatus({ saving: false, error: 'Passwords do not match.', success: null });
+            return;
+        }
+        setProfileStatus({ saving: true, error: null, success: null });
+        try {
+            const token = getStoredToken();
+            if (!token) {
+                throw new Error('You must be signed in to update your profile.');
+            }
+            const payload = {};
+            const nextMetadata = { ...profileMetadata };
+            if (profileForm.name) {
+                nextMetadata.name = profileForm.name;
+            }
+            if (Object.keys(nextMetadata).length > 0) {
+                payload.metadata = nextMetadata;
+            }
+            if (profileForm.password) {
+                payload.password = profileForm.password;
+            }
+            const response = await fetch(`/api/proxy/auth/users/${encodeURIComponent(currentUser.email)}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify(payload),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(data?.detail || data?.error || 'Failed to update profile');
+            }
+            setProfileMetadata(data.metadata || nextMetadata);
+            setCurrentUser((prev) => (prev ? { ...prev, name: profileForm.name || prev.name } : prev));
+            setProfileStatus({ saving: false, error: null, success: 'Profile updated successfully.' });
+            setProfileForm((prev) => ({ ...prev, password: '', confirmPassword: '' }));
+            setProfileLoaded(true);
+        }
+        catch (error) {
+            setProfileStatus({
+                saving: false,
+                error: error instanceof Error ? error.message : 'Failed to update profile',
+                success: null,
+            });
+        }
+    }, [
+        currentUser?.email,
+        profileForm.confirmPassword,
+        profileForm.name,
+        profileForm.password,
+        profileMetadata,
+    ]);
+    useEffect(() => {
+        if (showSettingsModal && settingsTab === 'profile' && !profileLoaded && !profileStatus.saving) {
+            fetchProfile();
+        }
+    }, [fetchProfile, profileLoaded, profileStatus.saving, settingsTab, showSettingsModal]);
     const unreadCount = notifications.filter((n) => !n.read).length;
     const contextValue = {
         menuOpen,
@@ -295,6 +445,10 @@ function ShellContent({ children, config, navItems, user, activePath, onNavigate
         cursor: 'pointer',
         transition: 'all 150ms ease',
     };
+    const settingsTabs = [
+        { key: 'appearance', label: 'Appearance' },
+        { key: 'profile', label: 'Profile' },
+    ];
     const showSidebar = menuOpen;
     // Prevent flash of unstyled content during hydration
     if (!mounted) {
@@ -305,138 +459,269 @@ function ShellContent({ children, config, navItems, user, activePath, onNavigate
                 color: '#fff',
             } }));
     }
-    return (_jsx(ShellContext.Provider, { value: contextValue, children: _jsxs("div", { style: styles({
-                display: 'flex',
-                height: '100vh',
-                backgroundColor: colors.bg.page,
-                color: colors.text.primary,
-            }), children: [_jsxs("aside", { style: styles({
-                        width: showSidebar ? '280px' : '0px',
-                        minWidth: showSidebar ? '280px' : '0px',
-                        height: '100%',
-                        backgroundColor: colors.bg.muted,
-                        borderRight: showSidebar ? `1px solid ${colors.border.subtle}` : 'none',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        overflow: 'hidden',
-                        flexShrink: 0,
-                    }), children: [_jsxs("div", { style: styles({
-                                height: '64px',
-                                minWidth: '280px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                padding: `0 ${spacing.lg}`,
-                                borderBottom: `1px solid ${colors.border.subtle}`,
-                                flexShrink: 0,
-                            }), children: [_jsxs("div", { style: styles({ display: 'flex', alignItems: 'center', gap: spacing.sm }), children: [_jsx("div", { style: styles({
-                                                width: '32px',
-                                                height: '32px',
-                                                background: `linear-gradient(135deg, ${colors.primary.default}, ${colors.accent.default})`,
-                                                borderRadius: radius.lg,
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                overflow: 'hidden',
-                                            }), children: config.logoUrl ? (_jsx("img", { src: config.logoUrl, alt: config.brandName, style: { width: '20px', height: '20px', objectFit: 'contain' } })) : (_jsx("span", { style: styles({ color: colors.text.inverse, fontWeight: 700, fontSize: ts.body.fontSize }), children: config.brandName.charAt(0) })) }), _jsx("span", { style: styles({ fontSize: ts.heading3.fontSize, fontWeight: ts.heading3.fontWeight, color: colors.text.primary }), children: config.brandName })] }), _jsx("button", { onClick: () => setMenuOpen(false), style: { ...iconButtonStyle, width: '36px', height: '36px' }, children: _jsx(Menu, { size: 20 }) })] }), _jsx("nav", { style: styles({
-                                flex: 1,
-                                overflowY: 'auto',
-                                padding: `${spacing.sm} ${spacing.md}`,
-                                minWidth: '280px',
-                            }), children: groupNavItems(filterNavByRoles(navItems, user?.roles)).map((group) => (_jsxs("div", { children: [_jsx(NavGroupHeader, { label: group.label }), group.items.map((item) => (_jsx(NavItemComponent, { item: item, activePath: activePath, onNavigate: onNavigate }, item.id)))] }, group.group))) }), _jsx("div", { style: styles({
-                                padding: spacing.lg,
-                                borderTop: `1px solid ${colors.border.subtle}`,
-                                flexShrink: 0,
-                                minWidth: '280px',
-                            }), children: _jsxs("div", { style: styles({ display: 'flex', alignItems: 'center', gap: spacing.sm, fontSize: ts.bodySmall.fontSize, color: colors.text.muted }), children: [_jsx("div", { style: styles({
-                                            width: '8px',
-                                            height: '8px',
-                                            backgroundColor: colors.success.default,
-                                            borderRadius: radius.full,
-                                        }) }), _jsx("span", { children: "System Online" })] }) })] }), _jsxs("div", { style: styles({ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }), children: [_jsxs("header", { style: styles({
-                                height: '64px',
-                                backgroundColor: colors.bg.surface,
-                                borderBottom: `1px solid ${colors.border.subtle}`,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                padding: `0 ${spacing['2xl']}`,
-                                flexShrink: 0,
-                            }), children: [_jsx("div", { style: styles({ display: 'flex', alignItems: 'center', gap: spacing.lg }), children: !showSidebar && (_jsx("button", { onClick: () => setMenuOpen(true), style: iconButtonStyle, children: _jsx(Menu, { size: 20 }) })) }), _jsxs("div", { style: styles({ display: 'flex', alignItems: 'center', gap: spacing.sm }), children: [config.showNotifications && (_jsx("div", { style: { position: 'relative' }, children: _jsxs("button", { onClick: () => { setShowNotifications(!showNotifications); setShowProfileMenu(false); }, style: iconButtonStyle, children: [_jsx(Bell, { size: 20 }), unreadCount > 0 && (_jsx("span", { style: styles({
-                                                            position: 'absolute',
-                                                            top: '4px',
-                                                            right: '4px',
-                                                            width: '18px',
-                                                            height: '18px',
-                                                            backgroundColor: colors.error.default,
-                                                            color: colors.text.inverse,
-                                                            fontSize: '11px',
-                                                            fontWeight: 600,
-                                                            borderRadius: radius.full,
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center',
-                                                        }), children: unreadCount > 9 ? '9+' : unreadCount }))] }) })), config.showUserMenu && (_jsxs("div", { style: { position: 'relative' }, children: [_jsxs("button", { onClick: () => { setShowProfileMenu(!showProfileMenu); setShowNotifications(false); }, style: styles({
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: spacing.md,
-                                                        padding: `${spacing.xs} ${spacing.md} ${spacing.xs} ${spacing.xs}`,
-                                                        background: 'none',
-                                                        border: 'none',
-                                                        borderRadius: radius.lg,
-                                                        cursor: 'pointer',
-                                                    }), children: [_jsx("div", { style: styles({
-                                                                width: '36px',
-                                                                height: '36px',
-                                                                background: `linear-gradient(135deg, ${colors.primary.default}, ${colors.accent.default})`,
+    return (_jsxs(ShellContext.Provider, { value: contextValue, children: [_jsxs("div", { style: styles({
+                    display: 'flex',
+                    height: '100vh',
+                    backgroundColor: colors.bg.page,
+                    color: colors.text.primary,
+                }), children: [_jsxs("aside", { style: styles({
+                            width: showSidebar ? '280px' : '0px',
+                            minWidth: showSidebar ? '280px' : '0px',
+                            height: '100%',
+                            backgroundColor: colors.bg.muted,
+                            borderRight: showSidebar ? `1px solid ${colors.border.subtle}` : 'none',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            overflow: 'hidden',
+                            flexShrink: 0,
+                        }), children: [_jsxs("div", { style: styles({
+                                    height: '64px',
+                                    minWidth: '280px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    padding: `0 ${spacing.lg}`,
+                                    borderBottom: `1px solid ${colors.border.subtle}`,
+                                    flexShrink: 0,
+                                }), children: [_jsxs("div", { style: styles({ display: 'flex', alignItems: 'center', gap: spacing.sm }), children: [_jsx("div", { style: styles({
+                                                    width: '32px',
+                                                    height: '32px',
+                                                    background: `linear-gradient(135deg, ${colors.primary.default}, ${colors.accent.default})`,
+                                                    borderRadius: radius.lg,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    overflow: 'hidden',
+                                                }), children: config.logoUrl ? (_jsx("img", { src: config.logoUrl, alt: config.brandName, style: { width: '20px', height: '20px', objectFit: 'contain' } })) : (_jsx("span", { style: styles({ color: colors.text.inverse, fontWeight: 700, fontSize: ts.body.fontSize }), children: config.brandName.charAt(0) })) }), _jsx("span", { style: styles({ fontSize: ts.heading3.fontSize, fontWeight: ts.heading3.fontWeight, color: colors.text.primary }), children: config.brandName })] }), _jsx("button", { onClick: () => setMenuOpen(false), style: { ...iconButtonStyle, width: '36px', height: '36px' }, children: _jsx(Menu, { size: 20 }) })] }), _jsx("nav", { style: styles({
+                                    flex: 1,
+                                    overflowY: 'auto',
+                                    padding: `${spacing.sm} ${spacing.md}`,
+                                    minWidth: '280px',
+                                }), children: groupNavItems(filterNavByRoles(navItems, currentUser?.roles)).map((group) => (_jsxs("div", { children: [_jsx(NavGroupHeader, { label: group.label }), group.items.map((item) => (_jsx(NavItemComponent, { item: item, activePath: activePath, onNavigate: onNavigate }, item.id)))] }, group.group))) }), _jsx("div", { style: styles({
+                                    padding: spacing.lg,
+                                    borderTop: `1px solid ${colors.border.subtle}`,
+                                    flexShrink: 0,
+                                    minWidth: '280px',
+                                }), children: _jsxs("div", { style: styles({ display: 'flex', alignItems: 'center', gap: spacing.sm, fontSize: ts.bodySmall.fontSize, color: colors.text.muted }), children: [_jsx("div", { style: styles({
+                                                width: '8px',
+                                                height: '8px',
+                                                backgroundColor: colors.success.default,
+                                                borderRadius: radius.full,
+                                            }) }), _jsx("span", { children: "System Online" })] }) })] }), _jsxs("div", { style: styles({ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }), children: [_jsxs("header", { style: styles({
+                                    height: '64px',
+                                    backgroundColor: colors.bg.surface,
+                                    borderBottom: `1px solid ${colors.border.subtle}`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    padding: `0 ${spacing['2xl']}`,
+                                    flexShrink: 0,
+                                }), children: [_jsx("div", { style: styles({ display: 'flex', alignItems: 'center', gap: spacing.lg }), children: !showSidebar && (_jsx("button", { onClick: () => setMenuOpen(true), style: iconButtonStyle, children: _jsx(Menu, { size: 20 }) })) }), _jsxs("div", { style: styles({ display: 'flex', alignItems: 'center', gap: spacing.sm }), children: [config.showThemeToggle && (_jsx("button", { onClick: () => openSettings('appearance'), style: iconButtonStyle, "aria-label": "Theme settings", children: resolvedTheme === 'dark' ? _jsx(Moon, { size: 20 }) : _jsx(Sun, { size: 20 }) })), config.showNotifications && (_jsx("div", { style: { position: 'relative' }, children: _jsxs("button", { onClick: () => { setShowNotifications(!showNotifications); setShowProfileMenu(false); }, style: iconButtonStyle, children: [_jsx(Bell, { size: 20 }), unreadCount > 0 && (_jsx("span", { style: styles({
+                                                                position: 'absolute',
+                                                                top: '4px',
+                                                                right: '4px',
+                                                                width: '18px',
+                                                                height: '18px',
+                                                                backgroundColor: colors.error.default,
+                                                                color: colors.text.inverse,
+                                                                fontSize: '11px',
+                                                                fontWeight: 600,
                                                                 borderRadius: radius.full,
                                                                 display: 'flex',
                                                                 alignItems: 'center',
                                                                 justifyContent: 'center',
-                                                            }), children: _jsx(User, { size: 18, style: { color: colors.text.inverse } }) }), _jsxs("div", { style: styles({ textAlign: 'left' }), children: [_jsx("div", { style: styles({ fontSize: ts.body.fontSize, fontWeight: ts.label.fontWeight, color: colors.text.primary }), children: user?.name || user?.email || 'User' }), _jsx("div", { style: styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.muted }), children: user?.roles?.[0] || 'Member' })] })] }), showProfileMenu && (_jsxs(_Fragment, { children: [_jsx("div", { onClick: () => setShowProfileMenu(false), style: styles({ position: 'fixed', inset: 0, zIndex: 40 }) }), _jsxs("div", { style: styles({
-                                                                position: 'absolute',
-                                                                right: 0,
-                                                                top: '100%',
-                                                                marginTop: spacing.sm,
-                                                                width: '220px',
-                                                                backgroundColor: colors.bg.surface,
-                                                                border: `1px solid ${colors.border.default}`,
+                                                            }), children: unreadCount > 9 ? '9+' : unreadCount }))] }) })), config.showUserMenu && (_jsxs("div", { style: { position: 'relative' }, children: [_jsxs("button", { onClick: () => { setShowProfileMenu(!showProfileMenu); setShowNotifications(false); }, style: styles({
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: spacing.md,
+                                                            padding: `${spacing.xs} ${spacing.md} ${spacing.xs} ${spacing.xs}`,
+                                                            background: 'none',
+                                                            border: 'none',
+                                                            borderRadius: radius.lg,
+                                                            cursor: 'pointer',
+                                                        }), children: [_jsx("div", { style: styles({
+                                                                    width: '36px',
+                                                                    height: '36px',
+                                                                    background: `linear-gradient(135deg, ${colors.primary.default}, ${colors.accent.default})`,
+                                                                    borderRadius: radius.full,
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'center',
+                                                                }), children: _jsx(User, { size: 18, style: { color: colors.text.inverse } }) }), _jsxs("div", { style: styles({ textAlign: 'left' }), children: [_jsx("div", { style: styles({ fontSize: ts.body.fontSize, fontWeight: ts.label.fontWeight, color: colors.text.primary }), children: currentUser?.name || currentUser?.email || 'User' }), _jsx("div", { style: styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.muted }), children: currentUser?.roles?.[0] || 'Member' })] })] }), showProfileMenu && (_jsxs(_Fragment, { children: [_jsx("div", { onClick: () => setShowProfileMenu(false), style: styles({ position: 'fixed', inset: 0, zIndex: 40 }) }), _jsxs("div", { style: styles({
+                                                                    position: 'absolute',
+                                                                    right: 0,
+                                                                    top: '100%',
+                                                                    marginTop: spacing.sm,
+                                                                    width: '220px',
+                                                                    backgroundColor: colors.bg.surface,
+                                                                    border: `1px solid ${colors.border.default}`,
+                                                                    borderRadius: radius.lg,
+                                                                    boxShadow: shadows.xl,
+                                                                    zIndex: 50,
+                                                                    overflow: 'hidden',
+                                                                }), children: [_jsxs("div", { style: styles({ padding: `${spacing.md} ${spacing.lg}`, borderBottom: `1px solid ${colors.border.subtle}` }), children: [_jsx("div", { style: styles({ fontSize: ts.body.fontSize, fontWeight: ts.label.fontWeight, color: colors.text.primary }), children: currentUser?.name || 'User' }), _jsx("div", { style: styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.muted }), children: currentUser?.email || '' })] }), _jsxs("div", { style: styles({ padding: spacing.sm }), children: [_jsxs("button", { onClick: () => openSettings('profile'), style: styles({
+                                                                                    display: 'flex',
+                                                                                    alignItems: 'center',
+                                                                                    gap: spacing.sm,
+                                                                                    width: '100%',
+                                                                                    padding: `${spacing.sm} ${spacing.md}`,
+                                                                                    background: 'none',
+                                                                                    border: 'none',
+                                                                                    borderRadius: radius.md,
+                                                                                    color: colors.text.primary,
+                                                                                    fontSize: ts.body.fontSize,
+                                                                                    cursor: 'pointer',
+                                                                                    textAlign: 'left',
+                                                                                }), children: [_jsx(User, { size: 16, style: { color: colors.text.muted } }), "Profile"] }), _jsxs("button", { onClick: () => openSettings('appearance'), style: styles({
+                                                                                    display: 'flex',
+                                                                                    alignItems: 'center',
+                                                                                    gap: spacing.sm,
+                                                                                    width: '100%',
+                                                                                    padding: `${spacing.sm} ${spacing.md}`,
+                                                                                    background: 'none',
+                                                                                    border: 'none',
+                                                                                    borderRadius: radius.md,
+                                                                                    color: colors.text.primary,
+                                                                                    fontSize: ts.body.fontSize,
+                                                                                    cursor: 'pointer',
+                                                                                    textAlign: 'left',
+                                                                                }), children: [_jsx(Settings, { size: 16, style: { color: colors.text.muted } }), "Settings"] })] }), _jsx("div", { style: styles({ padding: spacing.sm, borderTop: `1px solid ${colors.border.subtle}` }), children: _jsxs("button", { onClick: () => { setShowProfileMenu(false); onLogout?.(); }, style: styles({
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                gap: spacing.sm,
+                                                                                width: '100%',
+                                                                                padding: `${spacing.sm} ${spacing.md}`,
+                                                                                background: 'none',
+                                                                                border: 'none',
+                                                                                borderRadius: radius.md,
+                                                                                color: colors.error.default,
+                                                                                fontSize: ts.body.fontSize,
+                                                                                cursor: 'pointer',
+                                                                                textAlign: 'left',
+                                                                            }), children: [_jsx(LogOut, { size: 16 }), "Sign Out"] }) })] })] }))] }))] })] }), _jsx("main", { style: styles({
+                                    flex: 1,
+                                    overflow: 'auto',
+                                    padding: spacing['2xl'],
+                                    backgroundColor: colors.bg.page,
+                                }), onClick: () => { setShowNotifications(false); setShowProfileMenu(false); }, children: _jsx("div", { style: styles({ maxWidth: '1280px', margin: '0 auto' }), children: _jsx(UiKitProvider, { kit: erpKit, children: children }) }) })] })] }), showSettingsModal && (_jsxs(_Fragment, { children: [_jsx("div", { onClick: closeSettings, style: styles({
+                            position: 'fixed',
+                            inset: 0,
+                            backgroundColor: 'rgba(0,0,0,0.55)',
+                            backdropFilter: 'blur(4px)',
+                            zIndex: 90,
+                        }) }), _jsx("div", { style: styles({
+                            position: 'fixed',
+                            inset: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: spacing['2xl'],
+                            zIndex: 100,
+                        }), children: _jsxs("div", { style: styles({
+                                width: 'min(640px, 100%)',
+                                backgroundColor: colors.bg.surface,
+                                borderRadius: radius.xl,
+                                border: `1px solid ${colors.border.default}`,
+                                boxShadow: shadows.xl,
+                                overflow: 'hidden',
+                            }), children: [_jsxs("div", { style: styles({
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        padding: `${spacing.lg} ${spacing.xl}`,
+                                        borderBottom: `1px solid ${colors.border.subtle}`,
+                                    }), children: [_jsxs("div", { children: [_jsx("div", { style: styles({ fontSize: ts.heading3.fontSize, fontWeight: ts.heading3.fontWeight }), children: "User Settings" }), _jsx("div", { style: styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.muted }), children: "Manage your appearance and account details. Changes stay on this device unless saved." })] }), _jsx("button", { onClick: closeSettings, style: {
+                                                ...iconButtonStyle,
+                                                width: '36px',
+                                                height: '36px',
+                                                backgroundColor: colors.bg.muted,
+                                            }, "aria-label": "Close settings", children: _jsx(X, { size: 18 }) })] }), _jsx("div", { style: styles({
+                                        display: 'flex',
+                                        gap: spacing.sm,
+                                        padding: `${spacing.sm} ${spacing.xl}`,
+                                        borderBottom: `1px solid ${colors.border.subtle}`,
+                                    }), children: settingsTabs.map((tab) => {
+                                        const active = settingsTab === tab.key;
+                                        return (_jsx("button", { onClick: () => setSettingsTab(tab.key), style: styles({
+                                                padding: `${spacing.sm} ${spacing.md}`,
+                                                borderRadius: radius.lg,
+                                                border: 'none',
+                                                backgroundColor: active ? colors.bg.muted : 'transparent',
+                                                color: active ? colors.text.primary : colors.text.secondary,
+                                                fontWeight: active ? ts.label.fontWeight : ts.body.fontWeight,
+                                                cursor: 'pointer',
+                                            }), children: tab.label }, tab.key));
+                                    }) }), _jsxs("div", { style: styles({ padding: spacing.xl, display: 'flex', flexDirection: 'column', gap: spacing.xl }), children: [settingsTab === 'appearance' && (_jsxs("div", { style: styles({ display: 'flex', flexDirection: 'column', gap: spacing.md }), children: [_jsx("div", { style: styles({ fontWeight: ts.label.fontWeight, fontSize: ts.body.fontSize }), children: "Theme" }), _jsx("div", { style: styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.muted }), children: "Switch between light and dark. We store your choice in a cookie and localStorage so it sticks across visits." }), _jsx("div", { style: styles({ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: spacing.md }), children: [
+                                                        { value: 'light', label: 'Light', icon: _jsx(Sun, { size: 16 }) },
+                                                        { value: 'dark', label: 'Dark', icon: _jsx(Moon, { size: 16 }) },
+                                                        { value: 'system', label: 'System', icon: _jsx(Monitor, { size: 16 }) },
+                                                    ].map((option) => {
+                                                        const active = themePreference === option.value;
+                                                        return (_jsxs("button", { onClick: () => applyThemePreference(option.value), style: styles({
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: spacing.sm,
+                                                                padding: `${spacing.md} ${spacing.lg}`,
                                                                 borderRadius: radius.lg,
-                                                                boxShadow: shadows.xl,
-                                                                zIndex: 50,
-                                                                overflow: 'hidden',
-                                                            }), children: [_jsxs("div", { style: styles({ padding: `${spacing.md} ${spacing.lg}`, borderBottom: `1px solid ${colors.border.subtle}` }), children: [_jsx("div", { style: styles({ fontSize: ts.body.fontSize, fontWeight: ts.label.fontWeight, color: colors.text.primary }), children: user?.name || 'User' }), _jsx("div", { style: styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.muted }), children: user?.email || '' })] }), _jsx("div", { style: styles({ padding: spacing.sm }), children: [{ icon: User, label: 'Profile' }, { icon: Settings, label: 'Settings' }].map((item) => (_jsxs("button", { style: styles({
-                                                                            display: 'flex',
-                                                                            alignItems: 'center',
-                                                                            gap: spacing.sm,
-                                                                            width: '100%',
-                                                                            padding: `${spacing.sm} ${spacing.md}`,
-                                                                            background: 'none',
-                                                                            border: 'none',
-                                                                            borderRadius: radius.md,
-                                                                            color: colors.text.primary,
-                                                                            fontSize: ts.body.fontSize,
-                                                                            cursor: 'pointer',
-                                                                            textAlign: 'left',
-                                                                        }), children: [_jsx(item.icon, { size: 16, style: { color: colors.text.muted } }), item.label] }, item.label))) }), _jsx("div", { style: styles({ padding: spacing.sm, borderTop: `1px solid ${colors.border.subtle}` }), children: _jsxs("button", { onClick: () => { setShowProfileMenu(false); onLogout?.(); }, style: styles({
-                                                                            display: 'flex',
-                                                                            alignItems: 'center',
-                                                                            gap: spacing.sm,
-                                                                            width: '100%',
-                                                                            padding: `${spacing.sm} ${spacing.md}`,
-                                                                            background: 'none',
-                                                                            border: 'none',
-                                                                            borderRadius: radius.md,
-                                                                            color: colors.error.default,
-                                                                            fontSize: ts.body.fontSize,
-                                                                            cursor: 'pointer',
-                                                                            textAlign: 'left',
-                                                                        }), children: [_jsx(LogOut, { size: 16 }), "Sign Out"] }) })] })] }))] }))] })] }), _jsx("main", { style: styles({
-                                flex: 1,
-                                overflow: 'auto',
-                                padding: spacing['2xl'],
-                                backgroundColor: colors.bg.page,
-                            }), onClick: () => { setShowNotifications(false); setShowProfileMenu(false); }, children: _jsx("div", { style: styles({ maxWidth: '1280px', margin: '0 auto' }), children: _jsx(UiKitProvider, { kit: erpKit, children: children }) }) })] })] }) }));
+                                                                border: `1px solid ${active ? colors.border.strong : colors.border.subtle}`,
+                                                                backgroundColor: active ? colors.bg.muted : colors.bg.page,
+                                                                cursor: 'pointer',
+                                                                textAlign: 'left',
+                                                                color: colors.text.primary,
+                                                                boxShadow: active ? shadows.md : 'none',
+                                                            }), children: [_jsx("span", { style: styles({
+                                                                        width: '32px',
+                                                                        height: '32px',
+                                                                        borderRadius: radius.full,
+                                                                        backgroundColor: active ? colors.bg.muted : colors.bg.surface,
+                                                                        display: 'grid',
+                                                                        placeItems: 'center',
+                                                                        color: active ? colors.primary.default : colors.text.secondary,
+                                                                    }), children: option.icon }), _jsxs("div", { style: styles({ display: 'flex', flexDirection: 'column', gap: spacing.px }), children: [_jsx("span", { style: styles({ fontWeight: ts.label.fontWeight }), children: option.label }), _jsx("span", { style: styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.muted }), children: option.value === 'system' ? 'Match your device preference' : `Force ${option.label.toLowerCase()} mode` })] })] }, option.value));
+                                                    }) }), _jsxs("div", { style: styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.secondary }), children: ["Using ", _jsx("strong", { children: resolvedTheme }), " theme (preference: ", themePreference, ")."] })] })), settingsTab === 'profile' && (_jsxs("div", { style: styles({ display: 'flex', flexDirection: 'column', gap: spacing.md }), children: [_jsx("div", { style: styles({ fontWeight: ts.label.fontWeight, fontSize: ts.body.fontSize }), children: "Profile" }), _jsx("div", { style: styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.muted }), children: "Update your display name and optionally set a new password. Password changes require admin rights in the auth service." }), _jsxs("label", { style: styles({ display: 'flex', flexDirection: 'column', gap: spacing.xs, fontSize: ts.bodySmall.fontSize }), children: [_jsx("span", { style: styles({ color: colors.text.secondary }), children: "Display name" }), _jsx("input", { value: profileForm.name, onChange: (e) => setProfileForm((prev) => ({ ...prev, name: e.target.value })), placeholder: "Your name", style: styles({
+                                                                padding: `${spacing.sm} ${spacing.md}`,
+                                                                borderRadius: radius.md,
+                                                                border: `1px solid ${colors.border.default}`,
+                                                                backgroundColor: colors.bg.page,
+                                                                color: colors.text.primary,
+                                                                fontSize: ts.body.fontSize,
+                                                            }) })] }), _jsxs("label", { style: styles({ display: 'flex', flexDirection: 'column', gap: spacing.xs, fontSize: ts.bodySmall.fontSize }), children: [_jsx("span", { style: styles({ color: colors.text.secondary }), children: "New password" }), _jsx("input", { type: "password", value: profileForm.password, onChange: (e) => setProfileForm((prev) => ({ ...prev, password: e.target.value })), placeholder: "Optional", style: styles({
+                                                                padding: `${spacing.sm} ${spacing.md}`,
+                                                                borderRadius: radius.md,
+                                                                border: `1px solid ${colors.border.default}`,
+                                                                backgroundColor: colors.bg.page,
+                                                                color: colors.text.primary,
+                                                                fontSize: ts.body.fontSize,
+                                                            }) })] }), _jsxs("label", { style: styles({ display: 'flex', flexDirection: 'column', gap: spacing.xs, fontSize: ts.bodySmall.fontSize }), children: [_jsx("span", { style: styles({ color: colors.text.secondary }), children: "Confirm password" }), _jsx("input", { type: "password", value: profileForm.confirmPassword, onChange: (e) => setProfileForm((prev) => ({ ...prev, confirmPassword: e.target.value })), placeholder: "Optional", style: styles({
+                                                                padding: `${spacing.sm} ${spacing.md}`,
+                                                                borderRadius: radius.md,
+                                                                border: `1px solid ${colors.border.default}`,
+                                                                backgroundColor: colors.bg.page,
+                                                                color: colors.text.primary,
+                                                                fontSize: ts.body.fontSize,
+                                                            }) })] }), (profileStatus.error || profileStatus.success) && (_jsx("div", { style: styles({
+                                                        padding: `${spacing.sm} ${spacing.md}`,
+                                                        borderRadius: radius.md,
+                                                        backgroundColor: colors.bg.muted,
+                                                        color: profileStatus.error ? colors.error.default : colors.success.default,
+                                                        border: `1px solid ${profileStatus.error ? colors.error.default : colors.success.default}`,
+                                                    }), children: profileStatus.error || profileStatus.success })), _jsxs("div", { style: styles({ display: 'flex', justifyContent: 'flex-end', gap: spacing.sm }), children: [_jsx("button", { onClick: closeSettings, style: styles({
+                                                                padding: `${spacing.sm} ${spacing.md}`,
+                                                                borderRadius: radius.md,
+                                                                border: `1px solid ${colors.border.default}`,
+                                                                backgroundColor: colors.bg.page,
+                                                                color: colors.text.primary,
+                                                                cursor: 'pointer',
+                                                            }), children: "Cancel" }), _jsx("button", { onClick: handleProfileSave, disabled: profileStatus.saving, style: styles({
+                                                                padding: `${spacing.sm} ${spacing.lg}`,
+                                                                borderRadius: radius.md,
+                                                                border: 'none',
+                                                                backgroundColor: colors.primary.default,
+                                                                color: colors.text.inverse,
+                                                                fontWeight: ts.label.fontWeight,
+                                                                cursor: profileStatus.saving ? 'wait' : 'pointer',
+                                                                opacity: profileStatus.saving ? 0.8 : 1,
+                                                            }), children: profileStatus.saving ? 'Saving…' : 'Save changes' })] })] }))] })] }) })] }))] }));
 }
 export function DashboardShell({ children, config: configProp = {}, navItems = [], user = null, activePath = '/', onNavigate, onLogout, initialNotifications = [], }) {
     const config = {
@@ -446,8 +731,9 @@ export function DashboardShell({ children, config: configProp = {}, navItems = [
         showNotifications: configProp.showNotifications ?? true,
         showThemeToggle: configProp.showThemeToggle ?? false,
         showUserMenu: configProp.showUserMenu ?? true,
-        defaultTheme: 'dark',
+        defaultTheme: configProp.defaultTheme || 'system',
     };
-    return (_jsx(ThemeProvider, { defaultTheme: "dark", children: _jsx(ShellContent, { config: config, navItems: navItems, user: user, activePath: activePath, onNavigate: onNavigate, onLogout: onLogout, initialNotifications: initialNotifications, children: children }) }));
+    const providerDefaultTheme = config.defaultTheme === 'light' ? 'light' : config.defaultTheme === 'dark' ? 'dark' : 'dark';
+    return (_jsx(ThemeProvider, { defaultTheme: providerDefaultTheme, children: _jsx(ShellContent, { config: config, navItems: navItems, user: user, activePath: activePath, onNavigate: onNavigate, onLogout: onLogout, initialNotifications: initialNotifications, children: children }) }));
 }
 export default DashboardShell;
