@@ -3,6 +3,7 @@
 import React from 'react';
 import { X, Loader2, AlertCircle, CheckCircle, AlertTriangle, Info, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { UiKit } from '@hit/ui-kit';
+import { DataTable } from '@hit/ui-kit';
 
 // =============================================================================
 // ERP DESIGN SYSTEM
@@ -1024,6 +1025,7 @@ export const erpKit: UiKit = {
   Select,
   Checkbox,
   Table,
+  DataTable,
   Badge,
   Avatar,
   Alert,
