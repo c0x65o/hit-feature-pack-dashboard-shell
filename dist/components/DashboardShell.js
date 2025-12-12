@@ -191,8 +191,9 @@ function NavItemComponent({ item, level = 0, activePath, onNavigate }) {
 function CollapsedNavItem({ item, activePath, onNavigate, allItems }) {
     const { colors, radius, textStyles: ts, spacing, shadows } = useThemeTokens();
     const [showFlyout, setShowFlyout] = useState(false);
+    const [flyoutPosition, setFlyoutPosition] = useState({ top: 0, left: 0 });
     const closeTimeoutRef = React.useRef(null);
-    const containerRef = React.useRef(null);
+    const buttonRef = React.useRef(null);
     const hasChildren = item.children && item.children.length > 0;
     const isActive = activePath === item.path || (hasChildren && item.children?.some(child => child.path === activePath));
     const hasActiveChild = hasChildren && item.children?.some(child => child.path === activePath);
@@ -206,6 +207,14 @@ function CollapsedNavItem({ item, activePath, onNavigate, allItems }) {
         if (closeTimeoutRef.current) {
             clearTimeout(closeTimeoutRef.current);
             closeTimeoutRef.current = null;
+        }
+        // Calculate position based on button location
+        if (buttonRef.current) {
+            const rect = buttonRef.current.getBoundingClientRect();
+            setFlyoutPosition({
+                top: rect.top,
+                left: rect.right + 4,
+            });
         }
         setShowFlyout(true);
     };
@@ -243,7 +252,7 @@ function CollapsedNavItem({ item, activePath, onNavigate, allItems }) {
             }
         };
     }, []);
-    return (_jsxs("div", { ref: containerRef, style: { position: 'relative' }, onMouseEnter: handleMouseEnter, onMouseLeave: handleMouseLeave, children: [_jsx("button", { onClick: handleClick, style: styles({
+    return (_jsxs("div", { style: { position: 'relative' }, onMouseEnter: handleMouseEnter, onMouseLeave: handleMouseLeave, children: [_jsx("button", { ref: buttonRef, onClick: handleClick, style: styles({
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -256,20 +265,18 @@ function CollapsedNavItem({ item, activePath, onNavigate, allItems }) {
                     transition: 'all 150ms ease',
                     backgroundColor: (isActive && !hasChildren) || hasActiveChild ? colors.primary.default : 'transparent',
                     color: (isActive && !hasChildren) || hasActiveChild ? colors.text.inverse : colors.text.secondary,
-                }), title: item.label, children: IconComponent ? _jsx(IconComponent, { size: 22 }) : _jsx("span", { style: { fontSize: '14px', fontWeight: 600 }, children: item.label.charAt(0) }) }), showFlyout && (_jsxs("div", { style: styles({
-                    position: 'absolute',
-                    left: '100%',
-                    top: 0,
-                    marginLeft: '4px',
+                }), children: IconComponent ? _jsx(IconComponent, { size: 22 }) : _jsx("span", { style: { fontSize: '14px', fontWeight: 600 }, children: item.label.charAt(0) }) }), showFlyout && (_jsxs("div", { style: styles({
+                    position: 'fixed',
+                    top: `${flyoutPosition.top}px`,
+                    left: `${flyoutPosition.left}px`,
                     minWidth: '220px',
                     maxWidth: '280px',
                     backgroundColor: colors.bg.surface,
                     border: `1px solid ${colors.border.default}`,
                     borderRadius: radius.md,
                     boxShadow: shadows.xl,
-                    zIndex: 1000,
-                    overflow: 'hidden',
-                }), children: [_jsx("div", { style: styles({
+                    zIndex: 9999,
+                }), onMouseEnter: handleMouseEnter, onMouseLeave: handleMouseLeave, children: [_jsx("div", { style: styles({
                             padding: `${spacing.md} ${spacing.lg}`,
                             borderBottom: `1px solid ${colors.border.subtle}`,
                             backgroundColor: colors.bg.muted,
@@ -698,7 +705,6 @@ function ShellContent({ children, config, navItems, user, activePath, onNavigate
                                     }), title: `Expand ${config.brandName} navigation`, children: config.logoUrl ? (_jsx("img", { src: config.logoUrl, alt: config.brandName, style: { width: '24px', height: '24px', objectFit: 'contain' } })) : (_jsx("span", { style: styles({ color: colors.text.inverse, fontWeight: 700, fontSize: ts.heading3.fontSize }), children: config.brandName.charAt(0) })) }) }), _jsx("nav", { style: styles({
                                     flex: 1,
                                     overflowY: 'auto',
-                                    overflowX: 'visible',
                                     padding: `${spacing.sm} 0`,
                                 }), children: allFlatNavItems.map((item) => (_jsx(CollapsedNavItem, { item: item, activePath: activePath, onNavigate: onNavigate, allItems: allFlatNavItems }, item.id))) }), _jsx("div", { style: styles({
                                     padding: spacing.md,

@@ -294,8 +294,9 @@ interface CollapsedNavItemProps {
 function CollapsedNavItem({ item, activePath, onNavigate, allItems }: CollapsedNavItemProps) {
   const { colors, radius, textStyles: ts, spacing, shadows } = useThemeTokens();
   const [showFlyout, setShowFlyout] = useState(false);
+  const [flyoutPosition, setFlyoutPosition] = useState({ top: 0, left: 0 });
   const closeTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const containerRef = React.useRef<HTMLDivElement>(null);
+  const buttonRef = React.useRef<HTMLButtonElement>(null);
 
   const hasChildren = item.children && item.children.length > 0;
   const isActive = activePath === item.path || (hasChildren && item.children?.some(child => child.path === activePath));
@@ -312,6 +313,14 @@ function CollapsedNavItem({ item, activePath, onNavigate, allItems }: CollapsedN
     if (closeTimeoutRef.current) {
       clearTimeout(closeTimeoutRef.current);
       closeTimeoutRef.current = null;
+    }
+    // Calculate position based on button location
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setFlyoutPosition({
+        top: rect.top,
+        left: rect.right + 4,
+      });
     }
     setShowFlyout(true);
   };
@@ -354,13 +363,13 @@ function CollapsedNavItem({ item, activePath, onNavigate, allItems }: CollapsedN
 
   return (
     <div
-      ref={containerRef}
       style={{ position: 'relative' }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
       {/* Icon button in the rail */}
       <button
+        ref={buttonRef}
         onClick={handleClick}
         style={styles({
           display: 'flex',
@@ -376,28 +385,27 @@ function CollapsedNavItem({ item, activePath, onNavigate, allItems }: CollapsedN
           backgroundColor: (isActive && !hasChildren) || hasActiveChild ? colors.primary.default : 'transparent',
           color: (isActive && !hasChildren) || hasActiveChild ? colors.text.inverse : colors.text.secondary,
         })}
-        title={item.label}
       >
         {IconComponent ? <IconComponent size={22} /> : <span style={{ fontSize: '14px', fontWeight: 600 }}>{item.label.charAt(0)}</span>}
       </button>
 
-      {/* Flyout menu */}
+      {/* Flyout menu - uses fixed positioning to escape overflow containers */}
       {showFlyout && (
         <div
           style={styles({
-            position: 'absolute',
-            left: '100%',
-            top: 0,
-            marginLeft: '4px',
+            position: 'fixed',
+            top: `${flyoutPosition.top}px`,
+            left: `${flyoutPosition.left}px`,
             minWidth: '220px',
             maxWidth: '280px',
             backgroundColor: colors.bg.surface,
             border: `1px solid ${colors.border.default}`,
             borderRadius: radius.md,
             boxShadow: shadows.xl,
-            zIndex: 1000,
-            overflow: 'hidden',
+            zIndex: 9999,
           })}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
         >
           {/* Flyout header */}
           <div
@@ -955,7 +963,6 @@ function ShellContent({
             <nav style={styles({
               flex: 1,
               overflowY: 'auto',
-              overflowX: 'visible',
               padding: `${spacing.sm} 0`,
             })}>
               {allFlatNavItems.map((item) => (
