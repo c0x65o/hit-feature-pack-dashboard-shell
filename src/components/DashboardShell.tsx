@@ -288,14 +288,16 @@ interface CollapsedNavItemProps {
   item: NavItem;
   activePath: string;
   onNavigate?: (path: string) => void;
-  allItems: NavItem[];
+  isOpen: boolean;
+  onOpen: (itemId: string) => void;
+  onStartClose: () => void;
+  onCancelClose: () => void;
 }
 
-function CollapsedNavItem({ item, activePath, onNavigate, allItems }: CollapsedNavItemProps) {
+function CollapsedNavItem({ item, activePath, onNavigate, isOpen, onOpen, onStartClose, onCancelClose }: CollapsedNavItemProps) {
   const { colors, radius, textStyles: ts, spacing, shadows } = useThemeTokens();
-  const [showFlyout, setShowFlyout] = useState(false);
-  const [flyoutPosition, setFlyoutPosition] = useState({ top: 0, left: 0 });
-  const closeTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isHovered, setIsHovered] = useState(false);
+  const [hoveredChildIdx, setHoveredChildIdx] = useState<number | null>(null);
   const buttonRef = React.useRef<HTMLButtonElement>(null);
 
   const hasChildren = item.children && item.children.length > 0;
@@ -310,26 +312,22 @@ function CollapsedNavItem({ item, activePath, onNavigate, allItems }: CollapsedN
     : null;
 
   const handleMouseEnter = () => {
-    if (closeTimeoutRef.current) {
-      clearTimeout(closeTimeoutRef.current);
-      closeTimeoutRef.current = null;
-    }
-    // Calculate position based on button location
-    if (buttonRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      setFlyoutPosition({
-        top: rect.top,
-        left: rect.right + 4,
-      });
-    }
-    setShowFlyout(true);
+    onCancelClose();
+    setIsHovered(true);
+    onOpen(item.id);
   };
 
   const handleMouseLeave = () => {
-    // Delay closing by 500ms
-    closeTimeoutRef.current = setTimeout(() => {
-      setShowFlyout(false);
-    }, 500);
+    setIsHovered(false);
+    onStartClose();
+  };
+
+  const handleFlyoutMouseEnter = () => {
+    onCancelClose();
+  };
+
+  const handleFlyoutMouseLeave = () => {
+    onStartClose();
   };
 
   const handleClick = () => {
@@ -339,7 +337,6 @@ function CollapsedNavItem({ item, activePath, onNavigate, allItems }: CollapsedN
       } else if (typeof window !== 'undefined') {
         window.location.href = item.path;
       }
-      setShowFlyout(false);
     }
   };
 
@@ -349,17 +346,20 @@ function CollapsedNavItem({ item, activePath, onNavigate, allItems }: CollapsedN
     } else if (typeof window !== 'undefined') {
       window.location.href = path;
     }
-    setShowFlyout(false);
   };
 
-  // Cleanup timeout on unmount
-  React.useEffect(() => {
-    return () => {
-      if (closeTimeoutRef.current) {
-        clearTimeout(closeTimeoutRef.current);
-      }
-    };
-  }, []);
+  // Determine icon button background
+  const getIconBgColor = () => {
+    if ((isActive && !hasChildren) || hasActiveChild) return colors.primary.default;
+    if (isHovered || isOpen) return colors.bg.elevated || colors.bg.muted;
+    return 'transparent';
+  };
+
+  const getIconColor = () => {
+    if ((isActive && !hasChildren) || hasActiveChild) return colors.text.inverse;
+    if (isHovered || isOpen) return colors.text.primary;
+    return colors.text.secondary;
+  };
 
   return (
     <div
@@ -382,20 +382,20 @@ function CollapsedNavItem({ item, activePath, onNavigate, allItems }: CollapsedN
           borderRadius: radius.md,
           cursor: 'pointer',
           transition: 'all 150ms ease',
-          backgroundColor: (isActive && !hasChildren) || hasActiveChild ? colors.primary.default : 'transparent',
-          color: (isActive && !hasChildren) || hasActiveChild ? colors.text.inverse : colors.text.secondary,
+          backgroundColor: getIconBgColor(),
+          color: getIconColor(),
         })}
       >
         {IconComponent ? <IconComponent size={22} /> : <span style={{ fontSize: '14px', fontWeight: 600 }}>{item.label.charAt(0)}</span>}
       </button>
 
       {/* Flyout menu - uses fixed positioning to escape overflow containers */}
-      {showFlyout && (
+      {isOpen && buttonRef.current && (
         <div
           style={styles({
             position: 'fixed',
-            top: `${flyoutPosition.top}px`,
-            left: `${flyoutPosition.left}px`,
+            top: `${buttonRef.current.getBoundingClientRect().top}px`,
+            left: `${buttonRef.current.getBoundingClientRect().right + 4}px`,
             minWidth: '220px',
             maxWidth: '280px',
             backgroundColor: colors.bg.surface,
@@ -404,8 +404,8 @@ function CollapsedNavItem({ item, activePath, onNavigate, allItems }: CollapsedN
             boxShadow: shadows.xl,
             zIndex: 9999,
           })}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
+          onMouseEnter={handleFlyoutMouseEnter}
+          onMouseLeave={handleFlyoutMouseLeave}
         >
           {/* Flyout header */}
           <div
@@ -435,11 +435,27 @@ function CollapsedNavItem({ item, activePath, onNavigate, allItems }: CollapsedN
                   ? (LucideIcons as unknown as Record<string, React.ComponentType<{ size?: number; style?: React.CSSProperties }>>)[childIconName]
                   : null;
                 const childIsActive = activePath === child.path;
+                const childIsHovered = hoveredChildIdx === idx;
+
+                // Determine child button background
+                const getChildBgColor = () => {
+                  if (childIsActive) return colors.primary.default;
+                  if (childIsHovered) return colors.bg.elevated || colors.bg.muted;
+                  return 'transparent';
+                };
+
+                const getChildColor = () => {
+                  if (childIsActive) return colors.text.inverse;
+                  if (childIsHovered) return colors.text.primary;
+                  return colors.text.secondary;
+                };
 
                 return (
                   <button
                     key={`flyout-${item.id}-${idx}`}
                     onClick={() => handleChildClick(child.path!)}
+                    onMouseEnter={() => setHoveredChildIdx(idx)}
+                    onMouseLeave={() => setHoveredChildIdx(null)}
                     style={styles({
                       display: 'flex',
                       alignItems: 'center',
@@ -451,8 +467,8 @@ function CollapsedNavItem({ item, activePath, onNavigate, allItems }: CollapsedN
                       cursor: 'pointer',
                       textAlign: 'left',
                       transition: 'all 150ms ease',
-                      backgroundColor: childIsActive ? colors.primary.default : 'transparent',
-                      color: childIsActive ? colors.text.inverse : colors.text.secondary,
+                      backgroundColor: getChildBgColor(),
+                      color: getChildColor(),
                       fontSize: ts.body.fontSize,
                     })}
                   >
@@ -466,6 +482,8 @@ function CollapsedNavItem({ item, activePath, onNavigate, allItems }: CollapsedN
             ) : (
               <button
                 onClick={() => handleChildClick(item.path!)}
+                onMouseEnter={() => setHoveredChildIdx(0)}
+                onMouseLeave={() => setHoveredChildIdx(null)}
                 style={styles({
                   display: 'flex',
                   alignItems: 'center',
@@ -477,8 +495,8 @@ function CollapsedNavItem({ item, activePath, onNavigate, allItems }: CollapsedN
                   cursor: 'pointer',
                   textAlign: 'left',
                   transition: 'all 150ms ease',
-                  backgroundColor: isActive ? colors.primary.default : 'transparent',
-                  color: isActive ? colors.text.inverse : colors.text.secondary,
+                  backgroundColor: hoveredChildIdx === 0 ? (colors.bg.elevated || colors.bg.muted) : (isActive ? colors.primary.default : 'transparent'),
+                  color: hoveredChildIdx === 0 ? colors.text.primary : (isActive ? colors.text.inverse : colors.text.secondary),
                   fontSize: ts.body.fontSize,
                 })}
               >
@@ -550,6 +568,45 @@ function ShellContent({
   const [showAppearanceModal, setShowAppearanceModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [notifications] = useState<Notification[]>(initialNotifications);
+  
+  // Collapsed rail flyout state - shared across all nav items
+  const [openFlyoutId, setOpenFlyoutId] = useState<string | null>(null);
+  const flyoutCloseTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleFlyoutOpen = useCallback((itemId: string) => {
+    // Clear any pending close timeout
+    if (flyoutCloseTimeoutRef.current) {
+      clearTimeout(flyoutCloseTimeoutRef.current);
+      flyoutCloseTimeoutRef.current = null;
+    }
+    // Immediately open the new flyout (closes the previous one)
+    setOpenFlyoutId(itemId);
+  }, []);
+
+  const handleFlyoutStartClose = useCallback(() => {
+    // Start the 500ms delay before closing
+    flyoutCloseTimeoutRef.current = setTimeout(() => {
+      setOpenFlyoutId(null);
+    }, 500);
+  }, []);
+
+  const handleFlyoutCancelClose = useCallback(() => {
+    // Cancel the pending close
+    if (flyoutCloseTimeoutRef.current) {
+      clearTimeout(flyoutCloseTimeoutRef.current);
+      flyoutCloseTimeoutRef.current = null;
+    }
+  }, []);
+
+  // Cleanup flyout timeout on unmount
+  React.useEffect(() => {
+    return () => {
+      if (flyoutCloseTimeoutRef.current) {
+        clearTimeout(flyoutCloseTimeoutRef.current);
+      }
+    };
+  }, []);
+
   // Read config synchronously from window global (set by HitAppProvider)
   // Config is STATIC - generated at build time from hit.yaml
   const [hitConfig] = useState<any | null>(() => {
@@ -971,7 +1028,10 @@ function ShellContent({
                   item={item}
                   activePath={activePath}
                   onNavigate={onNavigate}
-                  allItems={allFlatNavItems}
+                  isOpen={openFlyoutId === item.id}
+                  onOpen={(itemId) => handleFlyoutOpen(itemId)}
+                  onStartClose={handleFlyoutStartClose}
+                  onCancelClose={handleFlyoutCancelClose}
                 />
               ))}
             </nav>

@@ -188,11 +188,10 @@ function NavItemComponent({ item, level = 0, activePath, onNavigate }) {
                             textAlign: 'center',
                         }), children: item.badge })), hasChildren && (_jsx("span", { style: styles({ display: 'flex', marginRight: '-4px' }), children: isExpanded ? _jsx(ChevronDown, { size: 16 }) : _jsx(ChevronRight, { size: 16 }) }))] }), hasChildren && isExpanded && (_jsx("div", { style: styles({ marginTop: spacing.px }), children: item.children.map((child, idx) => (_jsx(NavItemComponent, { item: { ...child, id: `${item.id}-${idx}` }, level: level + 1, activePath: activePath, onNavigate: onNavigate }, `${item.id}-${idx}`))) }))] }));
 }
-function CollapsedNavItem({ item, activePath, onNavigate, allItems }) {
+function CollapsedNavItem({ item, activePath, onNavigate, isOpen, onOpen, onStartClose, onCancelClose }) {
     const { colors, radius, textStyles: ts, spacing, shadows } = useThemeTokens();
-    const [showFlyout, setShowFlyout] = useState(false);
-    const [flyoutPosition, setFlyoutPosition] = useState({ top: 0, left: 0 });
-    const closeTimeoutRef = React.useRef(null);
+    const [isHovered, setIsHovered] = useState(false);
+    const [hoveredChildIdx, setHoveredChildIdx] = useState(null);
     const buttonRef = React.useRef(null);
     const hasChildren = item.children && item.children.length > 0;
     const isActive = activePath === item.path || (hasChildren && item.children?.some(child => child.path === activePath));
@@ -204,25 +203,19 @@ function CollapsedNavItem({ item, activePath, onNavigate, allItems }) {
         ? LucideIcons[iconName]
         : null;
     const handleMouseEnter = () => {
-        if (closeTimeoutRef.current) {
-            clearTimeout(closeTimeoutRef.current);
-            closeTimeoutRef.current = null;
-        }
-        // Calculate position based on button location
-        if (buttonRef.current) {
-            const rect = buttonRef.current.getBoundingClientRect();
-            setFlyoutPosition({
-                top: rect.top,
-                left: rect.right + 4,
-            });
-        }
-        setShowFlyout(true);
+        onCancelClose();
+        setIsHovered(true);
+        onOpen(item.id);
     };
     const handleMouseLeave = () => {
-        // Delay closing by 500ms
-        closeTimeoutRef.current = setTimeout(() => {
-            setShowFlyout(false);
-        }, 500);
+        setIsHovered(false);
+        onStartClose();
+    };
+    const handleFlyoutMouseEnter = () => {
+        onCancelClose();
+    };
+    const handleFlyoutMouseLeave = () => {
+        onStartClose();
     };
     const handleClick = () => {
         if (!hasChildren && item.path) {
@@ -232,7 +225,6 @@ function CollapsedNavItem({ item, activePath, onNavigate, allItems }) {
             else if (typeof window !== 'undefined') {
                 window.location.href = item.path;
             }
-            setShowFlyout(false);
         }
     };
     const handleChildClick = (path) => {
@@ -242,16 +234,22 @@ function CollapsedNavItem({ item, activePath, onNavigate, allItems }) {
         else if (typeof window !== 'undefined') {
             window.location.href = path;
         }
-        setShowFlyout(false);
     };
-    // Cleanup timeout on unmount
-    React.useEffect(() => {
-        return () => {
-            if (closeTimeoutRef.current) {
-                clearTimeout(closeTimeoutRef.current);
-            }
-        };
-    }, []);
+    // Determine icon button background
+    const getIconBgColor = () => {
+        if ((isActive && !hasChildren) || hasActiveChild)
+            return colors.primary.default;
+        if (isHovered || isOpen)
+            return colors.bg.elevated || colors.bg.muted;
+        return 'transparent';
+    };
+    const getIconColor = () => {
+        if ((isActive && !hasChildren) || hasActiveChild)
+            return colors.text.inverse;
+        if (isHovered || isOpen)
+            return colors.text.primary;
+        return colors.text.secondary;
+    };
     return (_jsxs("div", { style: { position: 'relative' }, onMouseEnter: handleMouseEnter, onMouseLeave: handleMouseLeave, children: [_jsx("button", { ref: buttonRef, onClick: handleClick, style: styles({
                     display: 'flex',
                     alignItems: 'center',
@@ -263,12 +261,12 @@ function CollapsedNavItem({ item, activePath, onNavigate, allItems }) {
                     borderRadius: radius.md,
                     cursor: 'pointer',
                     transition: 'all 150ms ease',
-                    backgroundColor: (isActive && !hasChildren) || hasActiveChild ? colors.primary.default : 'transparent',
-                    color: (isActive && !hasChildren) || hasActiveChild ? colors.text.inverse : colors.text.secondary,
-                }), children: IconComponent ? _jsx(IconComponent, { size: 22 }) : _jsx("span", { style: { fontSize: '14px', fontWeight: 600 }, children: item.label.charAt(0) }) }), showFlyout && (_jsxs("div", { style: styles({
+                    backgroundColor: getIconBgColor(),
+                    color: getIconColor(),
+                }), children: IconComponent ? _jsx(IconComponent, { size: 22 }) : _jsx("span", { style: { fontSize: '14px', fontWeight: 600 }, children: item.label.charAt(0) }) }), isOpen && buttonRef.current && (_jsxs("div", { style: styles({
                     position: 'fixed',
-                    top: `${flyoutPosition.top}px`,
-                    left: `${flyoutPosition.left}px`,
+                    top: `${buttonRef.current.getBoundingClientRect().top}px`,
+                    left: `${buttonRef.current.getBoundingClientRect().right + 4}px`,
                     minWidth: '220px',
                     maxWidth: '280px',
                     backgroundColor: colors.bg.surface,
@@ -276,7 +274,7 @@ function CollapsedNavItem({ item, activePath, onNavigate, allItems }) {
                     borderRadius: radius.md,
                     boxShadow: shadows.xl,
                     zIndex: 9999,
-                }), onMouseEnter: handleMouseEnter, onMouseLeave: handleMouseLeave, children: [_jsx("div", { style: styles({
+                }), onMouseEnter: handleFlyoutMouseEnter, onMouseLeave: handleFlyoutMouseLeave, children: [_jsx("div", { style: styles({
                             padding: `${spacing.md} ${spacing.lg}`,
                             borderBottom: `1px solid ${colors.border.subtle}`,
                             backgroundColor: colors.bg.muted,
@@ -292,7 +290,23 @@ function CollapsedNavItem({ item, activePath, onNavigate, allItems }) {
                                 ? LucideIcons[childIconName]
                                 : null;
                             const childIsActive = activePath === child.path;
-                            return (_jsxs("button", { onClick: () => handleChildClick(child.path), style: styles({
+                            const childIsHovered = hoveredChildIdx === idx;
+                            // Determine child button background
+                            const getChildBgColor = () => {
+                                if (childIsActive)
+                                    return colors.primary.default;
+                                if (childIsHovered)
+                                    return colors.bg.elevated || colors.bg.muted;
+                                return 'transparent';
+                            };
+                            const getChildColor = () => {
+                                if (childIsActive)
+                                    return colors.text.inverse;
+                                if (childIsHovered)
+                                    return colors.text.primary;
+                                return colors.text.secondary;
+                            };
+                            return (_jsxs("button", { onClick: () => handleChildClick(child.path), onMouseEnter: () => setHoveredChildIdx(idx), onMouseLeave: () => setHoveredChildIdx(null), style: styles({
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: spacing.sm,
@@ -303,11 +317,11 @@ function CollapsedNavItem({ item, activePath, onNavigate, allItems }) {
                                     cursor: 'pointer',
                                     textAlign: 'left',
                                     transition: 'all 150ms ease',
-                                    backgroundColor: childIsActive ? colors.primary.default : 'transparent',
-                                    color: childIsActive ? colors.text.inverse : colors.text.secondary,
+                                    backgroundColor: getChildBgColor(),
+                                    color: getChildColor(),
                                     fontSize: ts.body.fontSize,
                                 }), children: [ChildIconComponent && _jsx(ChildIconComponent, { size: 16, style: { flexShrink: 0 } }), _jsx("span", { style: styles({ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }), children: child.label })] }, `flyout-${item.id}-${idx}`));
-                        })) : (_jsxs("button", { onClick: () => handleChildClick(item.path), style: styles({
+                        })) : (_jsxs("button", { onClick: () => handleChildClick(item.path), onMouseEnter: () => setHoveredChildIdx(0), onMouseLeave: () => setHoveredChildIdx(null), style: styles({
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: spacing.sm,
@@ -318,8 +332,8 @@ function CollapsedNavItem({ item, activePath, onNavigate, allItems }) {
                                 cursor: 'pointer',
                                 textAlign: 'left',
                                 transition: 'all 150ms ease',
-                                backgroundColor: isActive ? colors.primary.default : 'transparent',
-                                color: isActive ? colors.text.inverse : colors.text.secondary,
+                                backgroundColor: hoveredChildIdx === 0 ? (colors.bg.elevated || colors.bg.muted) : (isActive ? colors.primary.default : 'transparent'),
+                                color: hoveredChildIdx === 0 ? colors.text.primary : (isActive ? colors.text.inverse : colors.text.secondary),
                                 fontSize: ts.body.fontSize,
                             }), children: [IconComponent && _jsx(IconComponent, { size: 16, style: { flexShrink: 0 } }), _jsxs("span", { children: ["Go to ", item.label] })] })) })] }))] }));
 }
@@ -348,6 +362,39 @@ function ShellContent({ children, config, navItems, user, activePath, onNavigate
     const [showAppearanceModal, setShowAppearanceModal] = useState(false);
     const [showProfileModal, setShowProfileModal] = useState(false);
     const [notifications] = useState(initialNotifications);
+    // Collapsed rail flyout state - shared across all nav items
+    const [openFlyoutId, setOpenFlyoutId] = useState(null);
+    const flyoutCloseTimeoutRef = React.useRef(null);
+    const handleFlyoutOpen = useCallback((itemId) => {
+        // Clear any pending close timeout
+        if (flyoutCloseTimeoutRef.current) {
+            clearTimeout(flyoutCloseTimeoutRef.current);
+            flyoutCloseTimeoutRef.current = null;
+        }
+        // Immediately open the new flyout (closes the previous one)
+        setOpenFlyoutId(itemId);
+    }, []);
+    const handleFlyoutStartClose = useCallback(() => {
+        // Start the 500ms delay before closing
+        flyoutCloseTimeoutRef.current = setTimeout(() => {
+            setOpenFlyoutId(null);
+        }, 500);
+    }, []);
+    const handleFlyoutCancelClose = useCallback(() => {
+        // Cancel the pending close
+        if (flyoutCloseTimeoutRef.current) {
+            clearTimeout(flyoutCloseTimeoutRef.current);
+            flyoutCloseTimeoutRef.current = null;
+        }
+    }, []);
+    // Cleanup flyout timeout on unmount
+    React.useEffect(() => {
+        return () => {
+            if (flyoutCloseTimeoutRef.current) {
+                clearTimeout(flyoutCloseTimeoutRef.current);
+            }
+        };
+    }, []);
     // Read config synchronously from window global (set by HitAppProvider)
     // Config is STATIC - generated at build time from hit.yaml
     const [hitConfig] = useState(() => {
@@ -706,7 +753,7 @@ function ShellContent({ children, config, navItems, user, activePath, onNavigate
                                     flex: 1,
                                     overflowY: 'auto',
                                     padding: `${spacing.sm} 0`,
-                                }), children: allFlatNavItems.map((item) => (_jsx(CollapsedNavItem, { item: item, activePath: activePath, onNavigate: onNavigate, allItems: allFlatNavItems }, item.id))) }), _jsx("div", { style: styles({
+                                }), children: allFlatNavItems.map((item) => (_jsx(CollapsedNavItem, { item: item, activePath: activePath, onNavigate: onNavigate, isOpen: openFlyoutId === item.id, onOpen: (itemId) => handleFlyoutOpen(itemId), onStartClose: handleFlyoutStartClose, onCancelClose: handleFlyoutCancelClose }, item.id))) }), _jsx("div", { style: styles({
                                     padding: spacing.md,
                                     borderTop: `1px solid ${colors.border.subtle}`,
                                     flexShrink: 0,
