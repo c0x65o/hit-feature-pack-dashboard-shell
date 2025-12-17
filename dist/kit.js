@@ -286,8 +286,9 @@ const Button = ({ variant = 'primary', size = 'md', loading, disabled, type = 'b
 // -----------------------------------------------------------------------------
 // Input - Fixed height, consistent styling
 // -----------------------------------------------------------------------------
-const Input = ({ label, type = 'text', placeholder, value, onChange, error, disabled, required }) => {
+const Input = ({ label, type = 'text', placeholder, value, onChange, error, disabled, required, className }) => {
     return React.createElement('div', {
+        className,
         style: { display: 'flex', flexDirection: 'column', gap: '6px' },
     }, label && React.createElement('label', {
         style: {

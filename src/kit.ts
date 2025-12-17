@@ -316,8 +316,9 @@ const Button: UiKit['Button'] = ({ variant = 'primary', size = 'md', loading, di
 // -----------------------------------------------------------------------------
 // Input - Fixed height, consistent styling
 // -----------------------------------------------------------------------------
-const Input: UiKit['Input'] = ({ label, type = 'text', placeholder, value, onChange, error, disabled, required }) => {
+const Input: UiKit['Input'] = ({ label, type = 'text', placeholder, value, onChange, error, disabled, required, className }) => {
   return React.createElement('div', {
+    className,
     style: { display: 'flex', flexDirection: 'column', gap: '6px' },
   },
     label && React.createElement('label', {
