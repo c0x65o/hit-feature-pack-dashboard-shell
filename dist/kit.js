@@ -568,7 +568,7 @@ const Badge = ({ variant = 'default', children }) => {
 // -----------------------------------------------------------------------------
 // Avatar
 // -----------------------------------------------------------------------------
-const Avatar = ({ src, name, size = 'md' }) => {
+function AvatarComponent({ src, name, size = 'md' }) {
     const sizes = { sm: 28, md: 36, lg: 44 };
     const fontSize = { sm: '11px', md: '13px', lg: '15px' };
     const dim = sizes[size];
@@ -604,7 +604,8 @@ const Avatar = ({ src, name, size = 'md' }) => {
             fontWeight: '600',
         },
     }, initials || '?');
-};
+}
+const Avatar = AvatarComponent;
 // -----------------------------------------------------------------------------
 // Alert - Prominent notifications
 // -----------------------------------------------------------------------------
@@ -738,7 +739,7 @@ const Modal = ({ open, onClose, title, description, size = 'md', children }) => 
 // -----------------------------------------------------------------------------
 // Spinner
 // -----------------------------------------------------------------------------
-const Spinner = ({ size = 'md' }) => {
+function SpinnerComponent({ size = 'md' }) {
     const sizes = { sm: 16, md: 24, lg: 32 };
     return React.createElement(Loader2, {
         size: sizes[size],
@@ -747,7 +748,8 @@ const Spinner = ({ size = 'md' }) => {
             color: colors.primary.default,
         },
     });
-};
+}
+const Spinner = SpinnerComponent;
 // -----------------------------------------------------------------------------
 // EmptyState
 // -----------------------------------------------------------------------------

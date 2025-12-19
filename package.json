@@ -1,7 +1,7 @@
 {
   "name": "@hit/feature-pack-dashboard-shell",
-  "version": "1.0.68",
-  "description": "Dashboard shell with sidebar, topbar, notifications, theme support, and ERP UI kit",
+  "version": "1.0.70",
+  "description": "Dashboard shell with sidebar, topbar, notifications, theme support, ERP UI kit, and table views",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
@@ -11,11 +11,24 @@
       "import": "./dist/index.js",
       "require": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./schema": {
+      "types": "./dist/schema/table-views.d.ts",
+      "import": "./dist/schema/table-views.js",
+      "require": "./dist/schema/table-views.js",
+      "default": "./dist/schema/table-views.js"
+    },
+    "./server/api/*": {
+      "types": "./dist/server/api/*.d.ts",
+      "import": "./dist/server/api/*.js",
+      "require": "./dist/server/api/*.js",
+      "default": "./dist/server/api/*.js"
     }
   },
   "files": [
     "dist",
-    "feature-pack.yaml"
+    "feature-pack.yaml",
+    "migrations"
   ],
   "scripts": {
     "build": "tsc",
@@ -27,14 +40,19 @@
     "@hit/ui-kit": "*",
     "react": "^18.0.0 || ^19.0.0",
     "react-dom": "^18.0.0 || ^19.0.0",
-    "lucide-react": ">=0.263.0"
+    "lucide-react": ">=0.263.0",
+    "next": "^14.0.0 || ^15.0.0",
+    "drizzle-orm": ">=0.30.0"
   },
   "dependencies": {},
   "devDependencies": {
     "@hit/ui-kit": "file:../hit-ui-kit",
+    "@types/node": "^20.0.0",
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",
+    "drizzle-orm": "^0.30.0",
     "lucide-react": "^0.460.0",
+    "next": "^14.2.5",
     "typescript": "^5.0.0"
   },
   "repository": {

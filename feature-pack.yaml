@@ -1,10 +1,48 @@
 # Feature Pack: dashboard-shell
 # Provides the dashboard shell (layout, sidebar, topbar, notifications) for HIT apps
+# Also includes the table views system for user-customizable data table views
 
 name: dashboard-shell
-description: Dashboard shell with sidebar, topbar, notifications, and theme support
+description: Dashboard shell with sidebar, topbar, notifications, theme support, and table views system
 
-# No routes - this is a layout wrapper, not pages
+# ─────────────────────────────────────────────────────────────────────────────
+# SCHEMA - Drizzle ORM table definitions
+# ─────────────────────────────────────────────────────────────────────────────
+schema:
+  source: src/schema/table-views.ts
+  exports:
+    - tableViews
+    - tableViewFilters
+    - tableViewsRelations
+    - tableViewFiltersRelations
+    - TableView
+    - TableViewFilter
+    - InsertTableView
+    - InsertTableViewFilter
+    - FILTER_OPERATORS
+    - FILTER_VALUE_TYPES
+    - FilterOperator
+    - FilterValueType
+
+# ─────────────────────────────────────────────────────────────────────────────
+# API ROUTES - Backend endpoints for table views
+# ─────────────────────────────────────────────────────────────────────────────
+api:
+  routes:
+    - path: /api/table-views
+      methods: [GET, POST]
+      handler: "@hit/feature-pack-dashboard-shell/server/api/table-views"
+      description: "List views (GET) or create view (POST)"
+    - path: /api/table-views/[id]
+      methods: [GET, PUT, DELETE]
+      handler: "@hit/feature-pack-dashboard-shell/server/api/table-views-id"
+      description: "Get, update, or delete a view"
+    - path: /api/table-views/[id]/use
+      methods: [PATCH]
+      handler: "@hit/feature-pack-dashboard-shell/server/api/table-views-use"
+      description: "Mark a view as used (update lastUsedAt)"
+
+# No page routes - this is a layout wrapper
 routes: []
 
 # No navigation contributions - this renders the navigation itself
@@ -47,4 +85,3 @@ config:
       enum: [light, dark, system]
       default: system
       description: Default theme mode
-

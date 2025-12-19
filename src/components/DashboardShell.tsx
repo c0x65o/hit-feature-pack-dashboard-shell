@@ -1482,7 +1482,7 @@ function ShellContent({
             onClick={() => { setShowNotifications(false); setShowProfileMenu(false); }}
           >
             <div style={styles({ maxWidth: '1280px', margin: '0 auto' })}>
-              <UiKitProvider kit={defaultKit}>{children}</UiKitProvider>
+              <UiKitProvider kit={defaultKit}>{children as any}</UiKitProvider>
             </div>
           </main>
         </div>
