@@ -1,12 +1,6 @@
-/**
- * Stub for @/lib/feature-pack-schemas
- * 
- * This is a type-only stub for feature pack compilation.
- * At runtime, the consuming application provides the actual implementation
- * via the generated lib/feature-pack-schemas.ts file.
- */
+// This file exists for local dev / CI contexts where feature-pack schema generation
+// is stubbed. Keep it minimal and aligned with `src/schema/table-views.ts`.
 
-// Re-export schema tables from this feature pack
 export {
   tableViews,
   tableViewFilters,
@@ -26,4 +20,5 @@ export {
   type FilterOperator,
   type FilterValueType,
 } from '../schema/table-views';
+
 

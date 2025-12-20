@@ -108,6 +108,7 @@ export const tableViewSharesRelations = relations(tableViewShares, ({ one }) => 
         references: [tableViews.id],
     }),
 }));
+// Dashboard system reset: dashboards schema/types removed.
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS & TYPES
 // ─────────────────────────────────────────────────────────────────────────────

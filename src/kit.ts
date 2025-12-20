@@ -762,7 +762,15 @@ const Alert: UiKit['Alert'] = ({ variant, title, onClose, children }) => {
 const Modal: UiKit['Modal'] = ({ open, onClose, title, description, size = 'md', children }) => {
   if (!open) return null;
 
-  const widths = { sm: '400px', md: '500px', lg: '640px', xl: '800px' };
+  // Keep in sync with ui-kit Modal size type (sm|md|lg|xl|2xl|full)
+  const widths: Record<string, string> = {
+    sm: '400px',
+    md: '500px',
+    lg: '640px',
+    xl: '800px',
+    '2xl': '980px',
+    full: '90vw',
+  };
 
   return React.createElement('div', {
     style: {

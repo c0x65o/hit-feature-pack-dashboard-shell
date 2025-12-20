@@ -158,6 +158,8 @@ export type InsertTableView = InferInsertModel<typeof tableViews>;
 export type InsertTableViewFilter = InferInsertModel<typeof tableViewFilters>;
 export type InsertTableViewShare = InferInsertModel<typeof tableViewShares>;
 
+// Dashboard system reset: dashboards schema/types removed.
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS & TYPES
 // ─────────────────────────────────────────────────────────────────────────────
