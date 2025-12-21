@@ -364,18 +364,42 @@ function Donut({
 type Bucket = 'hour' | 'day' | 'week' | 'month';
 type Agg = 'sum' | 'avg' | 'min' | 'max' | 'count' | 'last';
 
+type TimelineEvent = {
+  id: string;
+  title: string;
+  typeColor?: string | null;
+  occurredAt: string;
+  endAt?: string | null;
+  projectName?: string | null;
+};
+
+function dayKey(d: string | Date): string {
+  if (typeof d === 'string') {
+    // e.g. "2025-12-17T00:00:00Z" or "2025-12-17"
+    return d.slice(0, 10);
+  }
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 function MultiLineChart({
   title,
   format,
   series,
   bucket,
   bucketControl,
+  timelineOverlay,
+  timelineEvents,
 }: {
   title: string;
   format: 'number' | 'usd';
   series: Array<{ label: string; color: string; points: Array<{ t: number; v: number }> }>;
   bucket: Bucket;
   bucketControl?: React.ReactNode;
+  timelineOverlay?: boolean;
+  timelineEvents?: TimelineEvent[];
 }) {
   const { colors, radius, shadows } = useThemeTokens();
   const wPx = 900;
@@ -389,8 +413,18 @@ function MultiLineChart({
   const range = max - min || 1;
 
   const buckets = series[0]?.points?.map((p) => p.t) || [];
-  const toX = (idx: number) =>
+  const minT = buckets.length ? Math.min(...buckets) : 0;
+  const maxT = buckets.length ? Math.max(...buckets) : 1;
+  const timeSpan = maxT - minT || 1;
+
+  // When timeline overlay is enabled, we use a time-scaled x-axis (real timestamps),
+  // otherwise we keep the existing even-spacing by index.
+  const useTimeAxis = Boolean(timelineOverlay);
+
+  const toXByIdx = (idx: number) =>
     buckets.length <= 1 ? paddingX : paddingX + (idx / (buckets.length - 1)) * (wPx - paddingX * 2);
+  const toXByTime = (t: number) => paddingX + ((t - minT) / timeSpan) * (wPx - paddingX * 2);
+  const toX = (idx: number) => (useTimeAxis ? toXByTime(buckets[idx] ?? minT) : toXByIdx(idx));
   const toY = (v: number) => hPx - paddingY - ((v - min) / range) * (hPx - paddingY * 2);
 
   const yLabels = [
@@ -408,9 +442,15 @@ function MultiLineChart({
   };
   const xLabels: Array<{ x: number; label: string }> = [];
   if (buckets.length >= 2) {
-    xLabels.push({ x: toX(0), label: formatBucketLabel(buckets[0]) });
-    if (buckets.length > 2) xLabels.push({ x: toX(Math.floor(buckets.length / 2)), label: formatBucketLabel(buckets[Math.floor(buckets.length / 2)]) });
-    xLabels.push({ x: toX(buckets.length - 1), label: formatBucketLabel(buckets[buckets.length - 1]) });
+    xLabels.push({ x: useTimeAxis ? toXByTime(buckets[0]) : toX(0), label: formatBucketLabel(buckets[0]) });
+    if (buckets.length > 2) {
+      const mid = Math.floor(buckets.length / 2);
+      xLabels.push({ x: useTimeAxis ? toXByTime(buckets[mid]) : toX(mid), label: formatBucketLabel(buckets[mid]) });
+    }
+    xLabels.push({
+      x: useTimeAxis ? toXByTime(buckets[buckets.length - 1]) : toX(buckets.length - 1),
+      label: formatBucketLabel(buckets[buckets.length - 1]),
+    });
   }
 
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
@@ -420,22 +460,46 @@ function MultiLineChart({
     if (!wrapRef.current || buckets.length === 0) return;
     const rect = wrapRef.current.getBoundingClientRect();
     const x = evt.clientX - rect.left;
-    const frac = (x - 0) / rect.width;
-    const idx = Math.round(frac * (buckets.length - 1));
-    setHoverIdx(Math.max(0, Math.min(buckets.length - 1, idx)));
+    // Choose nearest bucket by pixel distance.
+    const xPositions = buckets.map((t, idx) => {
+      const xp = useTimeAxis ? toXByTime(t) : toXByIdx(idx);
+      return (xp / wPx) * rect.width;
+    });
+    let bestIdx = 0;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < xPositions.length; i++) {
+      const d = Math.abs(x - xPositions[i]);
+      if (d < bestDist) {
+        bestDist = d;
+        bestIdx = i;
+      }
+    }
+    setHoverIdx(bestIdx);
   };
 
   const handleLeave = () => setHoverIdx(null);
 
-  const tooltip = hoverIdx !== null && buckets[hoverIdx] ? {
-    t: buckets[hoverIdx],
-    x: toX(hoverIdx),
-    items: series.map((s) => ({
-      label: s.label,
-      color: s.color,
-      v: s.points[hoverIdx]?.v ?? 0,
-    })),
-  } : null;
+  const tooltip = hoverIdx !== null && buckets[hoverIdx]
+    ? {
+        t: buckets[hoverIdx],
+        x: toX(hoverIdx),
+        items: series.map((s) => ({
+          label: s.label,
+          color: s.color,
+          v: s.points[hoverIdx]?.v ?? 0,
+        })),
+        events:
+          timelineOverlay && Array.isArray(timelineEvents)
+            ? timelineEvents.filter((e) => {
+                const dk = dayKey(new Date(buckets[hoverIdx]));
+                const start = dayKey(e.occurredAt);
+                const end = e.endAt ? dayKey(e.endAt) : null;
+                if (end) return dk >= start && dk <= end;
+                return dk === start;
+              })
+            : [],
+      }
+    : null;
 
   return (
     <div className="card" ref={wrapRef} onMouseMove={handleMove} onMouseLeave={handleLeave} style={{ position: 'relative' }}>
@@ -451,9 +515,67 @@ function MultiLineChart({
           {yLabels.map((yl, i) => (
             <line key={i} x1={paddingX} y1={yl.y} x2={wPx - paddingX} y2={yl.y} stroke="currentColor" strokeOpacity={0.10} strokeDasharray="4 4" />
           ))}
+          {/* Timeline overlays (behind lines) */}
+          {timelineOverlay && Array.isArray(timelineEvents) && timelineEvents.length > 0 ? (
+            <>
+              {timelineEvents
+                .map((e) => {
+                  const startTs = new Date(e.occurredAt).getTime();
+                  if (!Number.isFinite(startTs)) return null;
+                  const endTs = e.endAt ? new Date(e.endAt).getTime() : null;
+                  const color = e.typeColor || '#6b7280';
+
+                  // Only render if intersects visible range
+                  const intersects = endTs
+                    ? !(endTs < minT || startTs > maxT)
+                    : startTs >= minT && startTs <= maxT;
+                  if (!intersects) return null;
+
+                  const x1 = toXByTime(Math.max(minT, startTs));
+
+                  if (endTs && endTs > startTs) {
+                    const x2 = toXByTime(Math.min(maxT, endTs));
+                    const w = Math.max(0, x2 - x1);
+                    return (
+                      <g key={`area_${e.id}`}>
+                        <rect x={x1} y={paddingY} width={w} height={hPx - paddingY * 2} fill={color} fillOpacity={0.08} />
+                        <rect
+                          x={x1}
+                          y={paddingY}
+                          width={w}
+                          height={hPx - paddingY * 2}
+                          fill="none"
+                          stroke={color}
+                          strokeOpacity={0.35}
+                          strokeWidth={1.5}
+                          strokeDasharray="4 2"
+                        />
+                      </g>
+                    );
+                  }
+
+                  return (
+                    <line
+                      key={`line_${e.id}`}
+                      x1={x1}
+                      y1={paddingY}
+                      x2={x1}
+                      y2={hPx - paddingY}
+                      stroke={color}
+                      strokeWidth={2}
+                      strokeDasharray="4 2"
+                      strokeOpacity={0.6}
+                    />
+                  );
+                })
+                .filter(Boolean)}
+            </>
+          ) : null}
           {series.map((s) => {
             const pts = s.points;
-            const line = pts.map((p, idx) => `${toX(idx).toFixed(1)},${toY(p.v).toFixed(1)}`).join(' ');
+            const line = pts
+              .map((p, idx) => `${(useTimeAxis ? toXByTime(p.t) : toXByIdx(idx)).toFixed(1)},${toY(p.v).toFixed(1)}`)
+              .join(' ');
             return (
               <polyline key={s.label} fill="none" stroke={s.color} strokeWidth="2.3" strokeLinejoin="round" strokeLinecap="round" points={line} />
             );
@@ -505,6 +627,25 @@ function MultiLineChart({
                 </div>
               ))}
             </div>
+            {timelineOverlay && tooltip.events && tooltip.events.length > 0 ? (
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${colors.border.subtle}` }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: colors.text.secondary, marginBottom: 6 }}>Timeline</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {tooltip.events.slice(0, 6).map((e: any) => (
+                    <div key={e.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <span style={{ width: 8, height: 8, borderRadius: 999, background: e.typeColor || '#6b7280', display: 'inline-block' }} />
+                      <span style={{ fontSize: 12, color: colors.text.primary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {String(e.title || 'Event')}
+                        {e.projectName ? <span style={{ opacity: 0.7 }}> ({String(e.projectName)})</span> : null}
+                      </span>
+                    </div>
+                  ))}
+                  {tooltip.events.length > 6 ? (
+                    <div style={{ fontSize: 11, color: colors.text.secondary }}>+{tooltip.events.length - 6} more…</div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
         <div className="legend">
@@ -550,6 +691,8 @@ export function Dashboards() {
   const [lineSeries, setLineSeries] = React.useState<Record<string, { loading: boolean; series?: Array<{ label: string; color: string; points: Array<{ t: number; v: number }> }> }>>({});
   const [lineBucketByWidgetKey, setLineBucketByWidgetKey] = React.useState<Record<string, Bucket>>({});
   const [projectNames, setProjectNames] = React.useState<Record<string, string>>({});
+  const [timelineEvents, setTimelineEvents] = React.useState<TimelineEvent[]>([]);
+  const [timelineLoading, setTimelineLoading] = React.useState(false);
 
   const urlParams = React.useMemo(() => {
     if (typeof window === 'undefined') return new URLSearchParams();
@@ -1234,6 +1377,26 @@ export function Dashboards() {
         }
       })
     );
+
+    // Timeline overlays (best-effort)
+    const needsTimeline = lines.some((w: any) => Boolean(w?.presentation?.timelineOverlay));
+    if (needsTimeline) {
+      try {
+        setTimelineLoading(true);
+        const u = `/api/projects/activity/all?from=${encodeURIComponent(range.start)}&to=${encodeURIComponent(range.end)}`;
+        const res = await fetch(u);
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.error || `Failed (${res.status})`);
+        const items = Array.isArray(json?.data) ? json.data : [];
+        setTimelineEvents(items as any);
+      } catch {
+        setTimelineEvents([]);
+      } finally {
+        setTimelineLoading(false);
+      }
+    } else {
+      setTimelineEvents([]);
+    }
   }, [definition?.key, effectiveTime, range.start, range.end, resolveProjectNames, projectNames, lineBucketByWidgetKey]);
 
   React.useEffect(() => {
@@ -1562,6 +1725,7 @@ export function Dashboards() {
                 const st = lineSeries[w.key];
                 const series = st?.series || [];
                 const currentBucket: Bucket = (lineBucketByWidgetKey[w.key] || w?.seriesSpec?.bucket || 'day') as Bucket;
+                const overlayEnabled = Boolean(w?.presentation?.timelineOverlay);
                 const bucketControl = (
                   <Select
                     value={currentBucket}
@@ -1580,7 +1744,15 @@ export function Dashboards() {
                         <div style={{ padding: 18 }}><Spinner /></div>
                       </Card>
                     ) : (
-                      <MultiLineChart title={w.title || 'Line'} format={fmt as any} series={series} bucket={currentBucket} bucketControl={bucketControl} />
+                      <MultiLineChart
+                        title={w.title || 'Line'}
+                        format={fmt as any}
+                        series={series}
+                        bucket={currentBucket}
+                        bucketControl={bucketControl}
+                        timelineOverlay={overlayEnabled}
+                        timelineEvents={overlayEnabled ? timelineEvents : []}
+                      />
                     )}
                   </div>
                 );

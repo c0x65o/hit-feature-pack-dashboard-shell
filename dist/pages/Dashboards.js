@@ -233,7 +233,17 @@ function Donut({ slices, format, }) {
                                     textOverflow: 'ellipsis',
                                 }, children: hovered.label })] }), _jsxs("div", { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }, children: [_jsx("div", { style: { fontSize: 18, fontWeight: 800 }, children: formatNumber(Number(hovered.value || 0), format) }), _jsxs("div", { style: { fontSize: 12, color: colors.text.secondary, fontVariantNumeric: 'tabular-nums' }, children: [Number.isFinite(hovered.pct) ? hovered.pct.toFixed(1) : '0.0', "%"] })] })] })) : null] }));
 }
-function MultiLineChart({ title, format, series, bucket, bucketControl, }) {
+function dayKey(d) {
+    if (typeof d === 'string') {
+        // e.g. "2025-12-17T00:00:00Z" or "2025-12-17"
+        return d.slice(0, 10);
+    }
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
+function MultiLineChart({ title, format, series, bucket, bucketControl, timelineOverlay, timelineEvents, }) {
     const { colors, radius, shadows } = useThemeTokens();
     const wPx = 900;
     const hPx = 240;
@@ -244,7 +254,15 @@ function MultiLineChart({ title, format, series, bucket, bucketControl, }) {
     const max = all.length ? Math.max(...all) : 1;
     const range = max - min || 1;
     const buckets = series[0]?.points?.map((p) => p.t) || [];
-    const toX = (idx) => buckets.length <= 1 ? paddingX : paddingX + (idx / (buckets.length - 1)) * (wPx - paddingX * 2);
+    const minT = buckets.length ? Math.min(...buckets) : 0;
+    const maxT = buckets.length ? Math.max(...buckets) : 1;
+    const timeSpan = maxT - minT || 1;
+    // When timeline overlay is enabled, we use a time-scaled x-axis (real timestamps),
+    // otherwise we keep the existing even-spacing by index.
+    const useTimeAxis = Boolean(timelineOverlay);
+    const toXByIdx = (idx) => buckets.length <= 1 ? paddingX : paddingX + (idx / (buckets.length - 1)) * (wPx - paddingX * 2);
+    const toXByTime = (t) => paddingX + ((t - minT) / timeSpan) * (wPx - paddingX * 2);
+    const toX = (idx) => (useTimeAxis ? toXByTime(buckets[idx] ?? minT) : toXByIdx(idx));
     const toY = (v) => hPx - paddingY - ((v - min) / range) * (hPx - paddingY * 2);
     const yLabels = [
         { y: toY(max), label: formatNumber(max, format) },
@@ -263,10 +281,15 @@ function MultiLineChart({ title, format, series, bucket, bucketControl, }) {
     };
     const xLabels = [];
     if (buckets.length >= 2) {
-        xLabels.push({ x: toX(0), label: formatBucketLabel(buckets[0]) });
-        if (buckets.length > 2)
-            xLabels.push({ x: toX(Math.floor(buckets.length / 2)), label: formatBucketLabel(buckets[Math.floor(buckets.length / 2)]) });
-        xLabels.push({ x: toX(buckets.length - 1), label: formatBucketLabel(buckets[buckets.length - 1]) });
+        xLabels.push({ x: useTimeAxis ? toXByTime(buckets[0]) : toX(0), label: formatBucketLabel(buckets[0]) });
+        if (buckets.length > 2) {
+            const mid = Math.floor(buckets.length / 2);
+            xLabels.push({ x: useTimeAxis ? toXByTime(buckets[mid]) : toX(mid), label: formatBucketLabel(buckets[mid]) });
+        }
+        xLabels.push({
+            x: useTimeAxis ? toXByTime(buckets[buckets.length - 1]) : toX(buckets.length - 1),
+            label: formatBucketLabel(buckets[buckets.length - 1]),
+        });
     }
     const wrapRef = React.useRef(null);
     const [hoverIdx, setHoverIdx] = React.useState(null);
@@ -275,23 +298,70 @@ function MultiLineChart({ title, format, series, bucket, bucketControl, }) {
             return;
         const rect = wrapRef.current.getBoundingClientRect();
         const x = evt.clientX - rect.left;
-        const frac = (x - 0) / rect.width;
-        const idx = Math.round(frac * (buckets.length - 1));
-        setHoverIdx(Math.max(0, Math.min(buckets.length - 1, idx)));
+        // Choose nearest bucket by pixel distance.
+        const xPositions = buckets.map((t, idx) => {
+            const xp = useTimeAxis ? toXByTime(t) : toXByIdx(idx);
+            return (xp / wPx) * rect.width;
+        });
+        let bestIdx = 0;
+        let bestDist = Number.POSITIVE_INFINITY;
+        for (let i = 0; i < xPositions.length; i++) {
+            const d = Math.abs(x - xPositions[i]);
+            if (d < bestDist) {
+                bestDist = d;
+                bestIdx = i;
+            }
+        }
+        setHoverIdx(bestIdx);
     };
     const handleLeave = () => setHoverIdx(null);
-    const tooltip = hoverIdx !== null && buckets[hoverIdx] ? {
-        t: buckets[hoverIdx],
-        x: toX(hoverIdx),
-        items: series.map((s) => ({
-            label: s.label,
-            color: s.color,
-            v: s.points[hoverIdx]?.v ?? 0,
-        })),
-    } : null;
-    return (_jsxs("div", { className: "card", ref: wrapRef, onMouseMove: handleMove, onMouseLeave: handleLeave, style: { position: 'relative' }, children: [_jsxs("div", { className: "card-head", children: [_jsx("div", { className: "card-title", children: title }), _jsxs("div", { style: { display: 'flex', gap: 10, alignItems: 'center' }, children: [bucketControl, _jsxs("div", { className: "card-subtle", children: [series.length, " series"] })] })] }), _jsxs("div", { className: "card-body", children: [_jsxs("svg", { viewBox: `0 0 ${wPx} ${hPx}`, preserveAspectRatio: "none", className: "chart-svg", children: [yLabels.map((yl, i) => (_jsx("line", { x1: paddingX, y1: yl.y, x2: wPx - paddingX, y2: yl.y, stroke: "currentColor", strokeOpacity: 0.10, strokeDasharray: "4 4" }, i))), series.map((s) => {
+    const tooltip = hoverIdx !== null && buckets[hoverIdx]
+        ? {
+            t: buckets[hoverIdx],
+            x: toX(hoverIdx),
+            items: series.map((s) => ({
+                label: s.label,
+                color: s.color,
+                v: s.points[hoverIdx]?.v ?? 0,
+            })),
+            events: timelineOverlay && Array.isArray(timelineEvents)
+                ? timelineEvents.filter((e) => {
+                    const dk = dayKey(new Date(buckets[hoverIdx]));
+                    const start = dayKey(e.occurredAt);
+                    const end = e.endAt ? dayKey(e.endAt) : null;
+                    if (end)
+                        return dk >= start && dk <= end;
+                    return dk === start;
+                })
+                : [],
+        }
+        : null;
+    return (_jsxs("div", { className: "card", ref: wrapRef, onMouseMove: handleMove, onMouseLeave: handleLeave, style: { position: 'relative' }, children: [_jsxs("div", { className: "card-head", children: [_jsx("div", { className: "card-title", children: title }), _jsxs("div", { style: { display: 'flex', gap: 10, alignItems: 'center' }, children: [bucketControl, _jsxs("div", { className: "card-subtle", children: [series.length, " series"] })] })] }), _jsxs("div", { className: "card-body", children: [_jsxs("svg", { viewBox: `0 0 ${wPx} ${hPx}`, preserveAspectRatio: "none", className: "chart-svg", children: [yLabels.map((yl, i) => (_jsx("line", { x1: paddingX, y1: yl.y, x2: wPx - paddingX, y2: yl.y, stroke: "currentColor", strokeOpacity: 0.10, strokeDasharray: "4 4" }, i))), timelineOverlay && Array.isArray(timelineEvents) && timelineEvents.length > 0 ? (_jsx(_Fragment, { children: timelineEvents
+                                    .map((e) => {
+                                    const startTs = new Date(e.occurredAt).getTime();
+                                    if (!Number.isFinite(startTs))
+                                        return null;
+                                    const endTs = e.endAt ? new Date(e.endAt).getTime() : null;
+                                    const color = e.typeColor || '#6b7280';
+                                    // Only render if intersects visible range
+                                    const intersects = endTs
+                                        ? !(endTs < minT || startTs > maxT)
+                                        : startTs >= minT && startTs <= maxT;
+                                    if (!intersects)
+                                        return null;
+                                    const x1 = toXByTime(Math.max(minT, startTs));
+                                    if (endTs && endTs > startTs) {
+                                        const x2 = toXByTime(Math.min(maxT, endTs));
+                                        const w = Math.max(0, x2 - x1);
+                                        return (_jsxs("g", { children: [_jsx("rect", { x: x1, y: paddingY, width: w, height: hPx - paddingY * 2, fill: color, fillOpacity: 0.08 }), _jsx("rect", { x: x1, y: paddingY, width: w, height: hPx - paddingY * 2, fill: "none", stroke: color, strokeOpacity: 0.35, strokeWidth: 1.5, strokeDasharray: "4 2" })] }, `area_${e.id}`));
+                                    }
+                                    return (_jsx("line", { x1: x1, y1: paddingY, x2: x1, y2: hPx - paddingY, stroke: color, strokeWidth: 2, strokeDasharray: "4 2", strokeOpacity: 0.6 }, `line_${e.id}`));
+                                })
+                                    .filter(Boolean) })) : null, series.map((s) => {
                                 const pts = s.points;
-                                const line = pts.map((p, idx) => `${toX(idx).toFixed(1)},${toY(p.v).toFixed(1)}`).join(' ');
+                                const line = pts
+                                    .map((p, idx) => `${(useTimeAxis ? toXByTime(p.t) : toXByIdx(idx)).toFixed(1)},${toY(p.v).toFixed(1)}`)
+                                    .join(' ');
                                 return (_jsx("polyline", { fill: "none", stroke: s.color, strokeWidth: "2.3", strokeLinejoin: "round", strokeLinecap: "round", points: line }, s.label));
                             }), tooltip ? (_jsx("line", { x1: tooltip.x, y1: paddingY, x2: tooltip.x, y2: hPx - paddingY, stroke: "currentColor", strokeOpacity: 0.18 })) : null, yLabels.map((yl, i) => (_jsx("text", { x: paddingX - 8, y: yl.y + 4, textAnchor: "end", fontSize: "11", fill: "currentColor", fillOpacity: 0.55, children: yl.label }, i))), xLabels.map((xl, i) => (_jsx("text", { x: xl.x, y: hPx - 8, textAnchor: "middle", fontSize: "11", fill: "currentColor", fillOpacity: 0.55, children: xl.label }, i)))] }), tooltip ? (_jsxs("div", { style: {
                             position: 'absolute',
@@ -306,7 +376,7 @@ function MultiLineChart({ title, format, series, bucket, bucketControl, }) {
                             padding: '10px 12px',
                             minWidth: 220,
                             boxShadow: shadows.lg,
-                        }, children: [_jsx("div", { style: { fontSize: 12, marginBottom: 8, color: colors.text.secondary }, children: formatBucketLabel(tooltip.t) }), _jsx("div", { style: { display: 'flex', flexDirection: 'column', gap: 6 }, children: tooltip.items.map((it) => (_jsxs("div", { style: { display: 'grid', gridTemplateColumns: '10px 1fr auto', gap: 10, alignItems: 'center' }, children: [_jsx("span", { style: { width: 10, height: 10, borderRadius: 999, background: it.color, display: 'inline-block' } }), _jsx("span", { style: { fontSize: 12, color: colors.text.primary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }, children: it.label }), _jsx("span", { style: { fontSize: 12, color: colors.text.secondary, fontVariantNumeric: 'tabular-nums' }, children: formatNumber(Number(it.v || 0), format) })] }, it.label))) })] })) : null, _jsx("div", { className: "legend", children: series.map((s) => (_jsxs("div", { className: "legend-pill", children: [_jsx("span", { className: "legend-dot", style: { backgroundColor: s.color } }), _jsx("span", { className: "legend-label", children: s.label })] }, s.label))) })] })] }));
+                        }, children: [_jsx("div", { style: { fontSize: 12, marginBottom: 8, color: colors.text.secondary }, children: formatBucketLabel(tooltip.t) }), _jsx("div", { style: { display: 'flex', flexDirection: 'column', gap: 6 }, children: tooltip.items.map((it) => (_jsxs("div", { style: { display: 'grid', gridTemplateColumns: '10px 1fr auto', gap: 10, alignItems: 'center' }, children: [_jsx("span", { style: { width: 10, height: 10, borderRadius: 999, background: it.color, display: 'inline-block' } }), _jsx("span", { style: { fontSize: 12, color: colors.text.primary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }, children: it.label }), _jsx("span", { style: { fontSize: 12, color: colors.text.secondary, fontVariantNumeric: 'tabular-nums' }, children: formatNumber(Number(it.v || 0), format) })] }, it.label))) }), timelineOverlay && tooltip.events && tooltip.events.length > 0 ? (_jsxs("div", { style: { marginTop: 10, paddingTop: 10, borderTop: `1px solid ${colors.border.subtle}` }, children: [_jsx("div", { style: { fontSize: 11, fontWeight: 700, color: colors.text.secondary, marginBottom: 6 }, children: "Timeline" }), _jsxs("div", { style: { display: 'flex', flexDirection: 'column', gap: 6 }, children: [tooltip.events.slice(0, 6).map((e) => (_jsxs("div", { style: { display: 'flex', gap: 8, alignItems: 'center' }, children: [_jsx("span", { style: { width: 8, height: 8, borderRadius: 999, background: e.typeColor || '#6b7280', display: 'inline-block' } }), _jsxs("span", { style: { fontSize: 12, color: colors.text.primary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }, children: [String(e.title || 'Event'), e.projectName ? _jsxs("span", { style: { opacity: 0.7 }, children: [" (", String(e.projectName), ")"] }) : null] })] }, e.id))), tooltip.events.length > 6 ? (_jsxs("div", { style: { fontSize: 11, color: colors.text.secondary }, children: ["+", tooltip.events.length - 6, " more\u2026"] })) : null] })] })) : null] })) : null, _jsx("div", { className: "legend", children: series.map((s) => (_jsxs("div", { className: "legend-pill", children: [_jsx("span", { className: "legend-dot", style: { backgroundColor: s.color } }), _jsx("span", { className: "legend-label", children: s.label })] }, s.label))) })] })] }));
 }
 export function Dashboards() {
     const { Page, Card, Button, Dropdown, Select, Input, Modal, Spinner, Badge } = useUi();
@@ -331,6 +401,8 @@ export function Dashboards() {
     const [lineSeries, setLineSeries] = React.useState({});
     const [lineBucketByWidgetKey, setLineBucketByWidgetKey] = React.useState({});
     const [projectNames, setProjectNames] = React.useState({});
+    const [timelineEvents, setTimelineEvents] = React.useState([]);
+    const [timelineLoading, setTimelineLoading] = React.useState(false);
     const urlParams = React.useMemo(() => {
         if (typeof window === 'undefined')
             return new URLSearchParams();
@@ -999,6 +1071,29 @@ export function Dashboards() {
                 setLineSeries((p) => ({ ...p, [w.key]: { loading: false, series: [] } }));
             }
         }));
+        // Timeline overlays (best-effort)
+        const needsTimeline = lines.some((w) => Boolean(w?.presentation?.timelineOverlay));
+        if (needsTimeline) {
+            try {
+                setTimelineLoading(true);
+                const u = `/api/projects/activity/all?from=${encodeURIComponent(range.start)}&to=${encodeURIComponent(range.end)}`;
+                const res = await fetch(u);
+                const json = await res.json().catch(() => ({}));
+                if (!res.ok)
+                    throw new Error(json?.error || `Failed (${res.status})`);
+                const items = Array.isArray(json?.data) ? json.data : [];
+                setTimelineEvents(items);
+            }
+            catch {
+                setTimelineEvents([]);
+            }
+            finally {
+                setTimelineLoading(false);
+            }
+        }
+        else {
+            setTimelineEvents([]);
+        }
     }, [definition?.key, effectiveTime, range.start, range.end, resolveProjectNames, projectNames, lineBucketByWidgetKey]);
     React.useEffect(() => {
         if (!definition)
@@ -1186,12 +1281,13 @@ export function Dashboards() {
                                     const st = lineSeries[w.key];
                                     const series = st?.series || [];
                                     const currentBucket = (lineBucketByWidgetKey[w.key] || w?.seriesSpec?.bucket || 'day');
+                                    const overlayEnabled = Boolean(w?.presentation?.timelineOverlay);
                                     const bucketControl = (_jsx(Select, { value: currentBucket, onChange: (v) => setLineBucketByWidgetKey((p) => ({ ...p, [w.key]: selectValue(v) })), options: [
                                             { value: 'day', label: 'Daily' },
                                             { value: 'week', label: 'Weekly' },
                                             { value: 'month', label: 'Monthly' },
                                         ] }));
-                                    return (_jsx("div", { className: spanClass, children: st?.loading ? (_jsx(Card, { title: w.title || 'Line', children: _jsx("div", { style: { padding: 18 }, children: _jsx(Spinner, {}) }) })) : (_jsx(MultiLineChart, { title: w.title || 'Line', format: fmt, series: series, bucket: currentBucket, bucketControl: bucketControl })) }, w.key));
+                                    return (_jsx("div", { className: spanClass, children: st?.loading ? (_jsx(Card, { title: w.title || 'Line', children: _jsx("div", { style: { padding: 18 }, children: _jsx(Spinner, {}) }) })) : (_jsx(MultiLineChart, { title: w.title || 'Line', format: fmt, series: series, bucket: currentBucket, bucketControl: bucketControl, timelineOverlay: overlayEnabled, timelineEvents: overlayEnabled ? timelineEvents : [] })) }, w.key));
                                 }
                                 return (_jsx("div", { className: spanClass, children: _jsx(Card, { title: w.title || w.kind, children: _jsxs("div", { style: { padding: 14, opacity: 0.75, fontSize: 12 }, children: ["Unsupported widget kind: ", String(w.kind)] }) }) }, w.key));
                             })) : null] }), _jsx(Modal, { open: shareOpen, onClose: () => setShareOpen(false), title: "Share dashboard", description: definition ? `ACL for ${definition.name}` : '', children: _jsxs("div", { style: { padding: 12 }, children: [sharesError ? _jsx("div", { style: { color: '#ef4444', fontSize: 13, marginBottom: 10 }, children: sharesError }) : null, sharesLoading ? _jsx(Spinner, {}) : (_jsx(AclPicker, { config: {
