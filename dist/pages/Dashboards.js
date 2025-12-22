@@ -637,35 +637,41 @@ export function Dashboards() {
                         .sort((a, b) => String(a.label || a.key).localeCompare(String(b.label || b.key)));
                     const t = effectiveTime(w);
                     const totalsByMetricKey = {};
-                    await pMapLimit(filtered, 10, async (it) => {
+                    const queries = filtered
+                        .map((it) => {
                         const mk = String(it.key || '').trim();
                         if (!mk)
-                            return;
-                        // Decide aggregation: sum-series metrics => sum; last/realtime => sum of last per entity.
+                            return null;
                         const roll = String(it.rollup_strategy || '').toLowerCase();
                         const timeKind = String(it.time_kind || '').toLowerCase();
-                        const agg = (roll === 'last' || timeKind === 'realtime' || timeKind === 'none') ? 'last' : 'sum';
-                        const body = {
-                            metricKey: mk,
-                            bucket: 'none',
-                            agg,
-                            entityKind,
-                            groupByEntityId: true,
-                        };
+                        const agg = roll === 'last' || timeKind === 'realtime' || timeKind === 'none' ? 'last' : 'sum';
+                        const body = { metricKey: mk, bucket: 'none', agg, entityKind, groupByEntityId: true };
                         if (t)
                             Object.assign(body, t);
-                        const res = await fetch('/api/metrics/query', {
+                        return body;
+                    })
+                        .filter(Boolean);
+                    const CHUNK = 50;
+                    for (let i = 0; i < queries.length; i += CHUNK) {
+                        const chunk = queries.slice(i, i + CHUNK);
+                        const res = await fetch('/api/metrics/query-batch', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(body),
+                            body: JSON.stringify({ queries: chunk }),
                         });
                         const json = await res.json().catch(() => ({}));
                         if (!res.ok)
-                            throw new Error(json?.error || `metrics/query ${res.status}`);
-                        const rows = Array.isArray(json.data) ? json.data : [];
-                        const sum = rows.reduce((acc, r) => acc + Number(r.value ?? 0), 0);
-                        totalsByMetricKey[mk] = Number.isFinite(sum) ? sum : 0;
-                    });
+                            throw new Error(json?.error || `metrics/query-batch ${res.status}`);
+                        const results = Array.isArray(json?.results) ? json.results : [];
+                        for (let j = 0; j < chunk.length; j++) {
+                            const q = chunk[j];
+                            const mk = String(q.metricKey || '').trim();
+                            const r = results[j];
+                            const rows = Array.isArray(r?.data) ? r.data : [];
+                            const sum = rows.reduce((acc, rr) => acc + Number(rr.value ?? 0), 0);
+                            totalsByMetricKey[mk] = Number.isFinite(sum) ? sum : 0;
+                        }
+                    }
                     setKpiCatalogTotals((p) => ({ ...p, [w.key]: { loading: false, totalsByMetricKey } }));
                 }
                 catch {
@@ -1188,18 +1194,26 @@ export function Dashboards() {
         .chart-svg { width: 100%; height: 240px; }
         .legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
         .legend-pill { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(148,163,184,0.14); background: rgba(148,163,184,0.08); font-size: 12px; }
-      ` }), _jsxs("div", { className: "wrap", children: [_jsxs("div", { className: "topbar", children: [_jsx("div", { style: { minWidth: 260 }, children: _jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }, children: [_jsx("strong", { children: definition?.name || 'Dashboard' }), pack ? _jsxs(Badge, { variant: "info", children: ["pack: ", pack] }) : _jsx(Badge, { variant: "info", children: "global" }), definition?.visibility ? _jsx(Badge, { variant: "default", children: definition.visibility }) : null] }) }), _jsxs("div", { className: "controls", children: [_jsx(Dropdown, { align: "right", trigger: _jsx(Button, { variant: "secondary", children: "Switch" }), items: list.map((d) => ({
+      ` }), _jsxs("div", { className: "wrap", children: [!loadingList && list.length === 0 ? (_jsx("div", { className: "span-12", children: _jsx(Card, { title: "No dashboards yet", description: pack ? `No dashboards exist for pack "${pack}" yet.` : 'No dashboards exist yet.', children: _jsxs("div", { style: { padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }, children: [_jsxs("div", { style: { fontSize: 13, color: colors.text.muted }, children: ["Create dashboard is coming soon. In the meantime, press ", _jsx("strong", { children: "Ctrl+K" }), " (or ", _jsx("strong", { children: "\u2318K" }), ") to open the AI assistant and tell it what you want your dashboard to look like."] }), _jsxs("div", { style: { display: 'flex', gap: 10, flexWrap: 'wrap' }, children: [_jsx(Button, { onClick: () => {
+                                                    // There is no dashboard builder UI yet; guide users into the AI overlay.
+                                                    try {
+                                                        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }));
+                                                    }
+                                                    catch {
+                                                        // ignore
+                                                    }
+                                                }, children: "Ask AI to create a dashboard" }), _jsx(Button, { variant: "secondary", onClick: loadList, children: "Refresh" })] })] }) }) })) : null, _jsxs("div", { className: "topbar", children: [_jsx("div", { style: { minWidth: 260 }, children: _jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }, children: [_jsx("strong", { children: definition?.name || 'Dashboard' }), pack ? _jsxs(Badge, { variant: "info", children: ["pack: ", pack] }) : _jsx(Badge, { variant: "info", children: "global" }), definition?.visibility ? _jsx(Badge, { variant: "default", children: definition.visibility }) : null] }) }), _jsxs("div", { className: "controls", children: [list.length > 0 ? (_jsx(Dropdown, { align: "right", trigger: _jsx(Button, { variant: "secondary", children: "Switch" }), items: list.map((d) => ({
                                             label: d.key === selectedKey ? `${d.name} (current)` : d.name,
                                             disabled: d.key === selectedKey,
                                             onClick: () => setSelectedKey(d.key),
-                                        })) }), _jsx(Select, { value: preset, onChange: (v) => setPreset(selectValue(v)), options: [
+                                        })) })) : null, _jsx(Select, { value: preset, onChange: (v) => setPreset(selectValue(v)), options: [
                                             { value: 'last_7_days', label: 'Last 7 days' },
                                             { value: 'last_30_days', label: 'Last 30 days' },
                                             { value: 'last_90_days', label: 'Last 90 days' },
                                             { value: 'month_to_date', label: 'Month to date' },
                                             { value: 'year_to_date', label: 'Year to date' },
                                             { value: 'custom', label: 'Custom' },
-                                        ] }), preset === 'custom' ? (_jsxs(_Fragment, { children: [_jsx(Input, { type: "date", value: customStart, onChange: (e) => setCustomStart(e.target.value) }), _jsx(Input, { type: "date", value: customEnd, onChange: (e) => setCustomEnd(e.target.value) })] })) : null, _jsx(Button, { onClick: () => queryMetrics(), disabled: loadingDash, children: "Refresh" }), _jsx(Button, { variant: "secondary", onClick: openShares, disabled: !definition, children: "Share" })] })] }), _jsx("div", { className: "subtitle", children: definition?.description || '—' }), error ? _jsx("div", { style: { color: '#ef4444', fontSize: 13 }, children: error }) : null, _jsxs("div", { className: "grid", children: [loadingDash ? (_jsx("div", { className: "span-12", children: _jsx(Card, { children: _jsx("div", { style: { padding: 18 }, children: _jsx(Spinner, {}) }) }) })) : null, !loadingDash && definition ? (widgetList.map((w) => {
+                                        ] }), preset === 'custom' ? (_jsxs(_Fragment, { children: [_jsx(Input, { type: "date", value: customStart, onChange: (e) => setCustomStart(e.target.value) }), _jsx(Input, { type: "date", value: customEnd, onChange: (e) => setCustomEnd(e.target.value) })] })) : null, _jsx(Button, { onClick: () => queryMetrics(), disabled: loadingDash, children: "Refresh" }), definition ? (_jsx(Button, { variant: "secondary", onClick: openShares, disabled: !definition, children: "Share" })) : null] })] }), _jsx("div", { className: "subtitle", children: definition?.description || '—' }), error ? _jsx("div", { style: { color: '#ef4444', fontSize: 13 }, children: error }) : null, _jsxs("div", { className: "grid", children: [loadingDash ? (_jsx("div", { className: "span-12", children: _jsx(Card, { children: _jsx("div", { style: { padding: 18 }, children: _jsx(Spinner, {}) }) }) })) : null, !loadingDash && definition ? (widgetList.map((w) => {
                                 const grid = w.grid || {};
                                 const span = typeof grid.w === 'number' ? grid.w : (w.kind === 'kpi' ? 3 : w.kind === 'pie' ? 6 : 12);
                                 const spanClass = span === 12 ? 'span-12' : span === 6 ? 'span-6' : span === 4 ? 'span-4' : 'span-3';
@@ -1239,7 +1253,7 @@ export function Dashboards() {
                                                                                 border: `1px solid ${colors.border.subtle}`,
                                                                                 background: colors.bg.muted,
                                                                                 color: iconColor,
-                                                                            }, children: _jsx(Icon, { size: 18, style: { color: iconColor } }) })) : null] }), _jsxs("div", { className: "kpi-mini-badges", children: [it.category ? _jsx(Badge, { children: it.category }) : null, it.unit ? _jsx(Badge, { children: it.unit }) : null, _jsx(Badge, { children: String(it.rollup_strategy || (it.time_kind === 'realtime' ? 'last' : 'sum')) })] })] }, mk));
+                                                                            }, children: _jsx(Icon, { size: 18, style: { color: iconColor } }) })) : null] }), _jsx("div", { className: "kpi-mini-badges", children: it.category ? _jsx(Badge, { children: it.category }) : null })] }, mk));
                                                     }) })) }) }) }, w.key));
                                 }
                                 if (w.kind === 'kpi') {

@@ -922,39 +922,39 @@ export function Dashboards() {
             const t = effectiveTime(w);
             const totalsByMetricKey: Record<string, number> = {};
 
-            await pMapLimit(
-              filtered,
-              10,
-              async (it) => {
+            const queries = filtered
+              .map((it) => {
                 const mk = String(it.key || '').trim();
-                if (!mk) return;
-
-                // Decide aggregation: sum-series metrics => sum; last/realtime => sum of last per entity.
+                if (!mk) return null;
                 const roll = String(it.rollup_strategy || '').toLowerCase();
                 const timeKind = String(it.time_kind || '').toLowerCase();
-                const agg: Agg = (roll === 'last' || timeKind === 'realtime' || timeKind === 'none') ? 'last' : 'sum';
-
-                const body: any = {
-                  metricKey: mk,
-                  bucket: 'none',
-                  agg,
-                  entityKind,
-                  groupByEntityId: true,
-                };
+                const agg: Agg = roll === 'last' || timeKind === 'realtime' || timeKind === 'none' ? 'last' : 'sum';
+                const body: any = { metricKey: mk, bucket: 'none', agg, entityKind, groupByEntityId: true };
                 if (t) Object.assign(body, t);
+                return body;
+              })
+              .filter(Boolean) as any[];
 
-                const res = await fetch('/api/metrics/query', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(body),
-                });
-                const json = await res.json().catch(() => ({}));
-                if (!res.ok) throw new Error(json?.error || `metrics/query ${res.status}`);
-                const rows = Array.isArray(json.data) ? json.data : [];
-                const sum = rows.reduce((acc: number, r: any) => acc + Number(r.value ?? 0), 0);
+            const CHUNK = 50;
+            for (let i = 0; i < queries.length; i += CHUNK) {
+              const chunk = queries.slice(i, i + CHUNK);
+              const res = await fetch('/api/metrics/query-batch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ queries: chunk }),
+              });
+              const json = await res.json().catch(() => ({}));
+              if (!res.ok) throw new Error(json?.error || `metrics/query-batch ${res.status}`);
+              const results = Array.isArray(json?.results) ? json.results : [];
+              for (let j = 0; j < chunk.length; j++) {
+                const q = chunk[j];
+                const mk = String(q.metricKey || '').trim();
+                const r = results[j];
+                const rows = Array.isArray(r?.data) ? r.data : [];
+                const sum = rows.reduce((acc: number, rr: any) => acc + Number(rr.value ?? 0), 0);
                 totalsByMetricKey[mk] = Number.isFinite(sum) ? sum : 0;
               }
-            );
+            }
 
             setKpiCatalogTotals((p) => ({ ...p, [w.key]: { loading: false, totalsByMetricKey } }));
           } catch {
@@ -1495,6 +1495,35 @@ export function Dashboards() {
       `}</style>
 
       <div className="wrap">
+        {!loadingList && list.length === 0 ? (
+          <div className="span-12">
+            <Card title="No dashboards yet" description={pack ? `No dashboards exist for pack "${pack}" yet.` : 'No dashboards exist yet.'}>
+              <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ fontSize: 13, color: colors.text.muted }}>
+                  Create dashboard is coming soon. In the meantime, press <strong>Ctrl+K</strong> (or <strong>⌘K</strong>) to open the AI assistant and tell it what you want your dashboard to look like.
+                </div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <Button
+                    onClick={() => {
+                      // There is no dashboard builder UI yet; guide users into the AI overlay.
+                      try {
+                        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }));
+                      } catch {
+                        // ignore
+                      }
+                    }}
+                  >
+                    Ask AI to create a dashboard
+                  </Button>
+                  <Button variant="secondary" onClick={loadList}>
+                    Refresh
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          </div>
+        ) : null}
+
         <div className="topbar">
           <div style={{ minWidth: 260 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -1505,15 +1534,17 @@ export function Dashboards() {
           </div>
 
           <div className="controls">
-            <Dropdown
-              align="right"
-              trigger={<Button variant="secondary">Switch</Button>}
-              items={list.map((d) => ({
-                label: d.key === selectedKey ? `${d.name} (current)` : d.name,
-                disabled: d.key === selectedKey,
-                onClick: () => setSelectedKey(d.key),
-              }))}
-            />
+            {list.length > 0 ? (
+              <Dropdown
+                align="right"
+                trigger={<Button variant="secondary">Switch</Button>}
+                items={list.map((d) => ({
+                  label: d.key === selectedKey ? `${d.name} (current)` : d.name,
+                  disabled: d.key === selectedKey,
+                  onClick: () => setSelectedKey(d.key),
+                }))}
+              />
+            ) : null}
 
             <Select
               value={preset}
@@ -1538,9 +1569,11 @@ export function Dashboards() {
             <Button onClick={() => queryMetrics()} disabled={loadingDash}>
               Refresh
             </Button>
-            <Button variant="secondary" onClick={openShares} disabled={!definition}>
-              Share
-            </Button>
+            {definition ? (
+              <Button variant="secondary" onClick={openShares} disabled={!definition}>
+                Share
+              </Button>
+            ) : null}
           </div>
         </div>
         <div className="subtitle">{definition?.description || '—'}</div>
@@ -1627,8 +1660,6 @@ export function Dashboards() {
                                   </div>
                                   <div className="kpi-mini-badges">
                                     {it.category ? <Badge>{it.category}</Badge> : null}
-                                    {it.unit ? <Badge>{it.unit}</Badge> : null}
-                                    <Badge>{String(it.rollup_strategy || (it.time_kind === 'realtime' ? 'last' : 'sum'))}</Badge>
                                   </div>
                                 </div>
                               );
