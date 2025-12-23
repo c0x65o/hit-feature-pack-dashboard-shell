@@ -1886,9 +1886,7 @@ export function Dashboards() {
                             <span style={{ color: pct >= 0 ? '#22c55e' : '#ef4444' }}>{formatNumber(pct, 'percent')}</span>
                             <span style={{ opacity: 0.7 }}>vs previous period</span>
                           </div>
-                        ) : (
-                          <div className="kpi-delta" />
-                        )}
+                        ) : null}
                         {action?.href && action?.label ? (
                           <a className="kpi-action" href={String(action.href)}>
                             {String(action.label)}

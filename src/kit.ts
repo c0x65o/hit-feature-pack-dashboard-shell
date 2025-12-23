@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { X, Loader2, AlertCircle, CheckCircle, AlertTriangle, Info, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
-import type { UiKit } from '@hit/ui-kit';
+import type { UiKit, AlertProps, ModalProps, EmptyStateProps, TabsProps, DropdownProps, SelectProps, SelectOption, CheckboxProps, TableProps, TableColumn, BadgeProps, InputProps, TextAreaProps, ButtonProps, PageProps, CardProps } from '@hit/ui-kit';
 import { DataTable, AlertDialog, Breadcrumb, Help } from '@hit/ui-kit';
 
 // =============================================================================
@@ -129,7 +129,7 @@ function injectGlobalStyles() {
 // Page - The master layout component
 // Controls: background, max-width, header alignment, spacing
 // -----------------------------------------------------------------------------
-const Page: UiKit['Page'] = ({ title, description, actions, children }) => {
+const Page: UiKit['Page'] = ({ title, description, actions, children }: PageProps) => {
   // Inject global styles on first render
   React.useEffect(() => {
     injectGlobalStyles();
@@ -196,7 +196,7 @@ const Page: UiKit['Page'] = ({ title, description, actions, children }) => {
 // Card - Container for content sections
 // Fixed padding, consistent styling
 // -----------------------------------------------------------------------------
-const Card: UiKit['Card'] = ({ title, description, footer, children }) => {
+const Card: UiKit['Card'] = ({ title, description, footer, children }: CardProps) => {
   return React.createElement('div', {
     style: {
       backgroundColor: colors.bg.surface,
@@ -250,10 +250,11 @@ const Card: UiKit['Card'] = ({ title, description, footer, children }) => {
 // -----------------------------------------------------------------------------
 // Button - Consistent sizing across all variants
 // -----------------------------------------------------------------------------
-const Button: UiKit['Button'] = ({ variant = 'primary', size = 'md', loading, disabled, type = 'button', onClick, children }) => {
-  const heights = { sm: sizing.inputHeightSm, md: sizing.inputHeight, lg: sizing.inputHeightLg };
-  const paddings = { sm: '0 12px', md: '0 16px', lg: '0 24px' };
-  const fontSizes = { sm: '13px', md: '14px', lg: '15px' };
+const Button: UiKit['Button'] = ({ variant = 'primary', size = 'md', loading, disabled, type = 'button', onClick, children }: ButtonProps) => {
+  const heights: Record<'sm' | 'md' | 'lg', string> = { sm: sizing.inputHeightSm, md: sizing.inputHeight, lg: sizing.inputHeightLg };
+  const paddings: Record<'sm' | 'md' | 'lg', string> = { sm: '0 12px', md: '0 16px', lg: '0 24px' };
+  const fontSizes: Record<'sm' | 'md' | 'lg', string> = { sm: '13px', md: '14px', lg: '15px' };
+  const sizeKey = size ?? 'md';
 
   const variantStyles: Record<string, React.CSSProperties> = {
     primary: {
@@ -290,16 +291,16 @@ const Button: UiKit['Button'] = ({ variant = 'primary', size = 'md', loading, di
     alignItems: 'center',
     justifyContent: 'center',
     gap: '8px',
-    height: variant === 'link' ? 'auto' : heights[size],
-    padding: variant === 'link' ? '0' : paddings[size],
-    fontSize: fontSizes[size],
+    height: variant === 'link' ? 'auto' : heights[sizeKey],
+    padding: variant === 'link' ? '0' : paddings[sizeKey],
+    fontSize: fontSizes[sizeKey],
     fontWeight: '500',
     borderRadius: sizing.borderRadius,
     cursor: disabled || loading ? 'not-allowed' : 'pointer',
     opacity: disabled || loading ? 0.5 : 1,
     transition: 'all 150ms ease',
     whiteSpace: 'nowrap',
-    ...variantStyles[variant],
+    ...variantStyles[variant ?? 'primary'],
   };
 
   return React.createElement('button', {
@@ -308,7 +309,7 @@ const Button: UiKit['Button'] = ({ variant = 'primary', size = 'md', loading, di
     disabled: disabled || loading,
     style: baseStyle,
   },
-    loading && React.createElement(Loader2, { size: size === 'sm' ? 14 : 16, style: { animation: 'spin 1s linear infinite' } }),
+    loading && React.createElement(Loader2, { size: sizeKey === 'sm' ? 14 : 16, style: { animation: 'spin 1s linear infinite' } }),
     children
   );
 };
@@ -316,7 +317,7 @@ const Button: UiKit['Button'] = ({ variant = 'primary', size = 'md', loading, di
 // -----------------------------------------------------------------------------
 // Input - Fixed height, consistent styling
 // -----------------------------------------------------------------------------
-const Input: UiKit['Input'] = ({ label, type = 'text', placeholder, value, onChange, error, disabled, required, className }) => {
+const Input: UiKit['Input'] = ({ label, type = 'text', placeholder, value, onChange, error, disabled, required, className }: InputProps) => {
   // Check if className contains flex-1 or similar flex grow classes
   const shouldFlex = className?.includes('flex-1') || className?.includes('flex-grow');
   return React.createElement('div', {
@@ -376,7 +377,7 @@ const Input: UiKit['Input'] = ({ label, type = 'text', placeholder, value, onCha
 // -----------------------------------------------------------------------------
 // TextArea - Consistent with Input styling
 // -----------------------------------------------------------------------------
-const TextArea: UiKit['TextArea'] = ({ label, placeholder, value, onChange, rows = 4, error, disabled, required }) => {
+const TextArea: UiKit['TextArea'] = ({ label, placeholder, value, onChange, rows = 4, error, disabled, required }: TextAreaProps) => {
   return React.createElement('div', {
     style: { display: 'flex', flexDirection: 'column', gap: '6px' },
   },
@@ -428,7 +429,7 @@ const TextArea: UiKit['TextArea'] = ({ label, placeholder, value, onChange, rows
 // -----------------------------------------------------------------------------
 // Select - Same height as Input and Button
 // -----------------------------------------------------------------------------
-const Select: UiKit['Select'] = ({ label, options, value, onChange, placeholder, error, disabled, required }) => {
+const Select: UiKit['Select'] = ({ label, options, value, onChange, placeholder, error, disabled, required }: SelectProps) => {
   return React.createElement('div', {
     style: { display: 'flex', flexDirection: 'column', gap: '6px' },
   },
@@ -463,7 +464,7 @@ const Select: UiKit['Select'] = ({ label, options, value, onChange, placeholder,
         },
       },
         placeholder && React.createElement('option', { value: '', disabled: true }, placeholder),
-        options.map((opt) =>
+        options.map((opt: SelectOption) =>
           React.createElement('option', { key: opt.value, value: opt.value, disabled: opt.disabled }, opt.label)
         )
       ),
@@ -487,7 +488,7 @@ const Select: UiKit['Select'] = ({ label, options, value, onChange, placeholder,
 // -----------------------------------------------------------------------------
 // Checkbox
 // -----------------------------------------------------------------------------
-const Checkbox: UiKit['Checkbox'] = ({ label, checked, onChange, disabled }) => {
+const Checkbox: UiKit['Checkbox'] = ({ label, checked, onChange, disabled }: CheckboxProps) => {
   return React.createElement('label', {
     style: {
       display: 'flex',
@@ -518,7 +519,7 @@ const Checkbox: UiKit['Checkbox'] = ({ label, checked, onChange, disabled }) => 
 // -----------------------------------------------------------------------------
 // Table - Clean, scannable data display
 // -----------------------------------------------------------------------------
-const Table: UiKit['Table'] = ({ columns, data, onRowClick, emptyMessage = 'No data found', loading }) => {
+const Table: UiKit['Table'] = ({ columns, data, onRowClick, emptyMessage = 'No data found', loading }: TableProps) => {
   if (loading) {
     return React.createElement('div', {
       style: {
@@ -555,7 +556,7 @@ const Table: UiKit['Table'] = ({ columns, data, onRowClick, emptyMessage = 'No d
         React.createElement('tr', {
           style: { borderBottom: `1px solid ${colors.border.subtle}` },
         },
-          columns.map((col) =>
+          columns.map((col: TableColumn) =>
             React.createElement('th', {
               key: col.key,
               style: {
@@ -573,7 +574,7 @@ const Table: UiKit['Table'] = ({ columns, data, onRowClick, emptyMessage = 'No d
         )
       ),
       React.createElement('tbody', null,
-        data.map((row, rowIndex) =>
+        data.map((row: Record<string, unknown>, rowIndex: number) =>
           React.createElement('tr', {
             key: rowIndex,
             onClick: onRowClick ? () => onRowClick(row, rowIndex) : undefined,
@@ -589,7 +590,7 @@ const Table: UiKit['Table'] = ({ columns, data, onRowClick, emptyMessage = 'No d
               e.currentTarget.style.backgroundColor = 'transparent';
             },
           },
-            columns.map((col) =>
+            columns.map((col: TableColumn) =>
               React.createElement('td', {
                 key: col.key,
                 style: {
@@ -613,7 +614,7 @@ const Table: UiKit['Table'] = ({ columns, data, onRowClick, emptyMessage = 'No d
 // -----------------------------------------------------------------------------
 // Badge - Small status indicators
 // -----------------------------------------------------------------------------
-const Badge: UiKit['Badge'] = ({ variant = 'default', children }) => {
+const Badge: UiKit['Badge'] = ({ variant = 'default', children }: BadgeProps) => {
   const styles: Record<string, React.CSSProperties> = {
     default: {
       backgroundColor: colors.bg.elevated,
@@ -704,13 +705,13 @@ const Avatar = AvatarComponent as UiKit['Avatar'];
 // -----------------------------------------------------------------------------
 // Alert - Prominent notifications
 // -----------------------------------------------------------------------------
-const Alert: UiKit['Alert'] = ({ variant, title, onClose, children }) => {
+const Alert: UiKit['Alert'] = ({ variant, title, onClose, children }: AlertProps) => {
   const config = {
     success: { Icon: CheckCircle, bg: colors.success.muted, border: colors.success.border, color: colors.success.default },
     warning: { Icon: AlertTriangle, bg: colors.warning.muted, border: colors.warning.border, color: colors.warning.default },
     error: { Icon: AlertCircle, bg: colors.error.muted, border: colors.error.border, color: colors.error.default },
     info: { Icon: Info, bg: colors.info.muted, border: colors.info.border, color: colors.info.default },
-  };
+  } as const;
 
   const { Icon, bg, border, color } = config[variant];
 
@@ -759,7 +760,7 @@ const Alert: UiKit['Alert'] = ({ variant, title, onClose, children }) => {
 // -----------------------------------------------------------------------------
 // Modal
 // -----------------------------------------------------------------------------
-const Modal: UiKit['Modal'] = ({ open, onClose, title, description, size = 'md', children }) => {
+const Modal: UiKit['Modal'] = ({ open, onClose, title, description, size = 'md', children }: ModalProps) => {
   if (!open) return null;
 
   // Keep in sync with ui-kit Modal size type (sm|md|lg|xl|2xl|full)
@@ -877,7 +878,7 @@ const Spinner = SpinnerComponent as UiKit['Spinner'];
 // -----------------------------------------------------------------------------
 // EmptyState
 // -----------------------------------------------------------------------------
-const EmptyState: UiKit['EmptyState'] = ({ icon, title, description, action }) => {
+const EmptyState: UiKit['EmptyState'] = ({ icon, title, description, action }: EmptyStateProps) => {
   return React.createElement('div', {
     style: {
       textAlign: 'center',
@@ -917,7 +918,7 @@ const EmptyState: UiKit['EmptyState'] = ({ icon, title, description, action }) =
 // -----------------------------------------------------------------------------
 // Tabs
 // -----------------------------------------------------------------------------
-const Tabs: UiKit['Tabs'] = ({ tabs, activeTab, onChange }) => {
+const Tabs: UiKit['Tabs'] = ({ tabs, activeTab, onChange }: TabsProps) => {
   const getTabId = (tab: { id?: string; value?: string }) => tab.id ?? tab.value ?? '';
   const currentTab = activeTab || getTabId(tabs[0] || {});
 
@@ -930,7 +931,7 @@ const Tabs: UiKit['Tabs'] = ({ tabs, activeTab, onChange }) => {
         marginBottom: '20px',
       },
     },
-      tabs.map((tab) => {
+      tabs.map((tab: { id?: string; value?: string; label: string; content?: React.ReactNode }) => {
         const tabId = getTabId(tab);
         return React.createElement('button', {
           key: tabId,
@@ -954,14 +955,14 @@ const Tabs: UiKit['Tabs'] = ({ tabs, activeTab, onChange }) => {
         }, tab.label);
       })
     ),
-    tabs.find((tab) => getTabId(tab) === currentTab)?.content
+    tabs.find((tab: { id?: string; value?: string; label: string; content?: React.ReactNode }) => getTabId(tab) === currentTab)?.content
   );
 };
 
 // -----------------------------------------------------------------------------
 // Dropdown
 // -----------------------------------------------------------------------------
-const Dropdown: UiKit['Dropdown'] = ({ trigger, items, align = 'left' }) => {
+const Dropdown: UiKit['Dropdown'] = ({ trigger, items, align = 'left' }: DropdownProps) => {
   const [open, setOpen] = React.useState(false);
 
   return React.createElement('div', { style: { position: 'relative', display: 'inline-block' } },
@@ -993,7 +994,7 @@ const Dropdown: UiKit['Dropdown'] = ({ trigger, items, align = 'left' }) => {
           overflow: 'hidden',
         },
       },
-        items.map((item, idx) =>
+        items.map((item: { label: string; onClick: () => void; icon?: React.ReactNode; danger?: boolean; disabled?: boolean }, idx: number) =>
           React.createElement('button', {
             key: idx,
             onClick: () => {

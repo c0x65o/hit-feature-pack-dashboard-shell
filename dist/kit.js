@@ -231,6 +231,7 @@ const Button = ({ variant = 'primary', size = 'md', loading, disabled, type = 'b
     const heights = { sm: sizing.inputHeightSm, md: sizing.inputHeight, lg: sizing.inputHeightLg };
     const paddings = { sm: '0 12px', md: '0 16px', lg: '0 24px' };
     const fontSizes = { sm: '13px', md: '14px', lg: '15px' };
+    const sizeKey = size ?? 'md';
     const variantStyles = {
         primary: {
             backgroundColor: colors.primary.default,
@@ -265,23 +266,23 @@ const Button = ({ variant = 'primary', size = 'md', loading, disabled, type = 'b
         alignItems: 'center',
         justifyContent: 'center',
         gap: '8px',
-        height: variant === 'link' ? 'auto' : heights[size],
-        padding: variant === 'link' ? '0' : paddings[size],
-        fontSize: fontSizes[size],
+        height: variant === 'link' ? 'auto' : heights[sizeKey],
+        padding: variant === 'link' ? '0' : paddings[sizeKey],
+        fontSize: fontSizes[sizeKey],
         fontWeight: '500',
         borderRadius: sizing.borderRadius,
         cursor: disabled || loading ? 'not-allowed' : 'pointer',
         opacity: disabled || loading ? 0.5 : 1,
         transition: 'all 150ms ease',
         whiteSpace: 'nowrap',
-        ...variantStyles[variant],
+        ...variantStyles[variant ?? 'primary'],
     };
     return React.createElement('button', {
         type,
         onClick: disabled || loading ? undefined : onClick,
         disabled: disabled || loading,
         style: baseStyle,
-    }, loading && React.createElement(Loader2, { size: size === 'sm' ? 14 : 16, style: { animation: 'spin 1s linear infinite' } }), children);
+    }, loading && React.createElement(Loader2, { size: sizeKey === 'sm' ? 14 : 16, style: { animation: 'spin 1s linear infinite' } }), children);
 };
 // -----------------------------------------------------------------------------
 // Input - Fixed height, consistent styling

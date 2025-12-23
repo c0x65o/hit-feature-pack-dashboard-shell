@@ -1436,7 +1436,7 @@ export function Dashboards() {
                                                                     border: `1px solid ${colors.border.subtle}`,
                                                                     background: colors.bg.muted,
                                                                     color: iconColor,
-                                                                }, children: _jsx(Icon, { size: 22, style: { color: iconColor } }) })) : null] }), prev !== null ? (_jsxs("div", { className: "kpi-delta", children: [_jsx("span", { style: { color: pct >= 0 ? '#22c55e' : '#ef4444' }, children: formatNumber(pct, 'percent') }), _jsx("span", { style: { opacity: 0.7 }, children: "vs previous period" })] })) : (_jsx("div", { className: "kpi-delta" })), action?.href && action?.label ? (_jsx("a", { className: "kpi-action", href: String(action.href), children: String(action.label) })) : null] }) }) }, w.key));
+                                                                }, children: _jsx(Icon, { size: 22, style: { color: iconColor } }) })) : null] }), prev !== null ? (_jsxs("div", { className: "kpi-delta", children: [_jsx("span", { style: { color: pct >= 0 ? '#22c55e' : '#ef4444' }, children: formatNumber(pct, 'percent') }), _jsx("span", { style: { opacity: 0.7 }, children: "vs previous period" })] })) : null, action?.href && action?.label ? (_jsx("a", { className: "kpi-action", href: String(action.href), children: String(action.label) })) : null] }) }) }, w.key));
                                 }
                                 if (w.kind === 'pie') {
                                     const st = pieRows[w.key];
