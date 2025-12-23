@@ -13,10 +13,12 @@
  */
 'use client';
 import { jsx as _jsx } from "react/jsx-runtime";
-import { Activity, BarChart3, BookOpen, Building, Building2, Calendar, ChartBar, CheckCircle, ChevronDown, ChevronLeft, ChevronRight, CirclePlay, ClipboardList, Clock, Cog, FileText, Filter, FolderKanban, Gamepad2, History, Home, Key, Layers, LayoutDashboard, Link2, List, ListChecks, Lock, LogIn, Mail, MapPin, Music, Package, Palette, Plug, Rocket, Settings, Share2, Shield, ShieldCheck, ShoppingBag, Store, Tag, TrendingUp, Upload, User, UserPlus, Users, UsersRound, Workflow, Wrench, } from 'lucide-react';
+import { Activity, AlertTriangle, BadgeCheck, BarChart3, BookOpen, Building, Building2, Calendar, ChartBar, CheckCircle, ChevronDown, ChevronLeft, ChevronRight, CirclePlay, ClipboardList, Clock, Cog, DollarSign, Edit, Edit2, Eye, EyeOff, FileText, Filter, FolderKanban, Gamepad2, History, Home, Key, Layers, LayoutDashboard, Link2, List, ListChecks, Lock, LogIn, Mail, MapPin, Music, Package, Palette, Plug, Rocket, Settings, Share2, Shield, ShieldCheck, ShoppingBag, Store, Tag, Trash2, TrendingDown, TrendingUp, Upload, User, UserPlus, Users, UsersRound, Workflow, Wrench, } from 'lucide-react';
 const ICONS = {
     // Common shell/navigation icons
     Activity,
+    AlertTriangle,
+    BadgeCheck,
     BarChart3,
     BookOpen,
     Building,
@@ -31,6 +33,11 @@ const ICONS = {
     ClipboardList,
     Clock,
     Cog,
+    DollarSign,
+    Edit,
+    Edit2,
+    Eye,
+    EyeOff,
     FileText,
     Filter,
     FolderKanban,
@@ -59,6 +66,8 @@ const ICONS = {
     ShoppingBag,
     Store,
     Tag,
+    Trash2,
+    TrendingDown,
     TrendingUp,
     Upload,
     User,
