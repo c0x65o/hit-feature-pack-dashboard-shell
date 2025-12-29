@@ -89,11 +89,23 @@ function normalizeVisibility(v: unknown): 'public' | 'private' {
 }
 
 function normalizeDefinition(def: any): any {
-  if (!def || typeof def !== 'object') throw new Error('definition must be an object');
-  const widgets = Array.isArray(def.widgets) ? def.widgets : [];
-  const layout = def.layout && typeof def.layout === 'object' ? def.layout : { grid: { cols: 12, rowHeight: 36, gap: 14 } };
-  const time = def.time && typeof def.time === 'object' ? def.time : { mode: 'picker', default: 'last_30_days' };
-  return { ...def, time, layout, widgets };
+  let x: any = def;
+  if (typeof x === 'string') {
+    const raw = x.trim();
+    if (raw) {
+      try {
+        x = JSON.parse(raw);
+      } catch {
+        // fall through
+      }
+    }
+  }
+  if (x == null) x = {};
+  if (!x || typeof x !== 'object') throw new Error('definition must be an object');
+  const widgets = Array.isArray(x.widgets) ? x.widgets : [];
+  const layout = x.layout && typeof x.layout === 'object' ? x.layout : { grid: { cols: 12, rowHeight: 36, gap: 14 } };
+  const time = x.time && typeof x.time === 'object' ? x.time : { mode: 'picker', default: 'last_30_days' };
+  return { ...x, time, layout, widgets };
 }
 
 /**
@@ -146,7 +158,18 @@ export async function PUT(request: NextRequest, { params }: { params: { key: str
     const nextName = body?.name !== undefined ? String(body?.name || '').trim() : undefined;
     const nextDesc = body?.description !== undefined ? (body?.description === null ? null : String(body?.description || '')) : undefined;
     const nextVis = body?.visibility !== undefined ? normalizeVisibility(body?.visibility) : undefined;
-    const nextDef = body?.definition !== undefined ? normalizeDefinition(body?.definition) : undefined;
+    let nextDef: any | undefined = undefined;
+    if (body?.definition !== undefined) {
+      try {
+        nextDef = normalizeDefinition(body?.definition);
+      } catch (e: any) {
+        const msg = String(e?.message || 'Invalid definition');
+        if (msg.includes('definition must be an object')) {
+          return NextResponse.json({ error: msg }, { status: 400 });
+        }
+        throw e;
+      }
+    }
 
     if (nextName === '' && body?.name !== undefined) return NextResponse.json({ error: 'name cannot be empty' }, { status: 400 });
     if (nextName === undefined && nextDesc === undefined && nextVis === undefined && nextDef === undefined) {

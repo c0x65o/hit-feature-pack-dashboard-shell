@@ -124,11 +124,28 @@ function normalizeScope(input: any, fallbackPack?: string): any {
 
 function normalizeDefinition(def: any): any {
   // Keep validation lightweight but strict enough to avoid broken dashboards.
-  if (!def || typeof def !== 'object') throw new Error('definition must be an object');
-  const widgets = Array.isArray(def.widgets) ? def.widgets : [];
-  const layout = def.layout && typeof def.layout === 'object' ? def.layout : { grid: { cols: 12, rowHeight: 36, gap: 14 } };
-  const time = def.time && typeof def.time === 'object' ? def.time : { mode: 'picker', default: 'last_30_days' };
-  return { ...def, time, layout, widgets };
+  // The AI/tooling may send `definition` as a JSON string or omit it entirely on create.
+  // We coerce that into a minimal valid definition to avoid 500s for otherwise valid requests.
+  let x: any = def;
+  if (typeof x === 'string') {
+    const raw = x.trim();
+    if (raw) {
+      try {
+        x = JSON.parse(raw);
+      } catch {
+        // fall through to validation error below
+      }
+    }
+  }
+  if (x == null) {
+    // Minimal empty dashboard definition; caller can update widgets/layout later.
+    x = {};
+  }
+  if (!x || typeof x !== 'object') throw new Error('definition must be an object');
+  const widgets = Array.isArray(x.widgets) ? x.widgets : [];
+  const layout = x.layout && typeof x.layout === 'object' ? x.layout : { grid: { cols: 12, rowHeight: 36, gap: 14 } };
+  const time = x.time && typeof x.time === 'object' ? x.time : { mode: 'picker', default: 'last_30_days' };
+  return { ...x, time, layout, widgets };
 }
 
 /**
@@ -189,7 +206,16 @@ export async function POST(request: NextRequest) {
     const scope = normalizeScope(body?.scope ?? source?.scope, packFallback || undefined);
 
     const defIn = body?.definition ?? source?.definition;
-    const definition = normalizeDefinition(defIn);
+    let definition: any;
+    try {
+      definition = normalizeDefinition(defIn);
+    } catch (e: any) {
+      const msg = String(e?.message || 'Invalid definition');
+      if (msg.includes('definition must be an object')) {
+        return NextResponse.json({ error: msg }, { status: 400 });
+      }
+      throw e;
+    }
 
     const providedKey = String(body?.key || '').trim();
     const keyBase = providedKey || `user.${slugify(String(user.sub || 'user'))}.${slugify(name)}`;
