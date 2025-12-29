@@ -52,4 +52,14 @@ export declare const postBodySchema: z.ZodObject<{
     definition?: Record<string, any> | undefined;
     sourceKey?: string | undefined;
 }>;
+export declare const getQuerySchema: z.ZodObject<{
+    pack: z.ZodOptional<z.ZodString>;
+    includeGlobal: z.ZodOptional<z.ZodEnum<["true", "false"]>>;
+}, "strip", z.ZodTypeAny, {
+    pack?: string | undefined;
+    includeGlobal?: "false" | "true" | undefined;
+}, {
+    pack?: string | undefined;
+    includeGlobal?: "false" | "true" | undefined;
+}>;
 //# sourceMappingURL=dashboard-definitions.schema.d.ts.map

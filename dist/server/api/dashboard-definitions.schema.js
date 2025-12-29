@@ -14,3 +14,9 @@ export const postBodySchema = z.object({
     definition: z.record(z.any()).optional(),
     sourceKey: z.string().optional(),
 });
+// GET /api/dashboard-definitions query params.
+// Note: query params arrive as strings; we keep them stringy for clarity for the AI.
+export const getQuerySchema = z.object({
+    pack: z.string().optional(),
+    includeGlobal: z.enum(["true", "false"]).optional(),
+});
