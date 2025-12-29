@@ -11,7 +11,7 @@ export const postBodySchema = z.object({
     pack: z.string().optional(),
     key: z.string().optional(),
     // NOTE: definition is an object; we keep it permissive here because the server normalizes it.
-    definition: z.record(z.any()).optional(),
+    definition: z.record(z.string(), z.any()).optional(),
     sourceKey: z.string().optional(),
 });
 // GET /api/dashboard-definitions query params.

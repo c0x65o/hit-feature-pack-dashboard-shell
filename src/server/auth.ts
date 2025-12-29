@@ -6,6 +6,8 @@ export interface User {
   name?: string;
   roles?: string[];
   groups?: string[];
+  // Optional feature pack config carried in JWT claims (app-controlled).
+  featurePacks?: Record<string, any>;
 }
 
 /**
@@ -49,6 +51,7 @@ export function extractUserFromRequest(request: NextRequest): User | null {
       name: payload.name || payload.email || '',
       roles: payload.roles || [],
       groups: payload.groups || [],
+      featurePacks: (payload.featurePacks && typeof payload.featurePacks === 'object') ? payload.featurePacks : undefined,
     };
   } catch {
     return null;

@@ -5,6 +5,7 @@ export interface User {
     name?: string;
     roles?: string[];
     groups?: string[];
+    featurePacks?: Record<string, any>;
 }
 /**
  * Extract user from JWT token in cookies or Authorization header

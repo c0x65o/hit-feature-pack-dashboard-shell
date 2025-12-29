@@ -34,6 +34,7 @@ export function extractUserFromRequest(request) {
             name: payload.name || payload.email || '',
             roles: payload.roles || [],
             groups: payload.groups || [],
+            featurePacks: (payload.featurePacks && typeof payload.featurePacks === 'object') ? payload.featurePacks : undefined,
         };
     }
     catch {
