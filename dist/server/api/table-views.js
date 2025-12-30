@@ -4,6 +4,7 @@ import { getDb } from '@/lib/db';
 import { tableViews, tableViewFilters, tableViewShares, } from '@/lib/feature-pack-schemas';
 import { eq, desc, and, inArray, or, sql } from 'drizzle-orm';
 import { extractUserFromRequest } from '../auth';
+import { resolveUserPrincipals } from '@hit/acl-utils';
 // Required for Next.js App Router
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -40,8 +41,9 @@ export async function GET(request) {
             .orderBy(desc(tableViews.isDefault), desc(tableViews.createdAt));
         // Build conditions for views shared with user
         // Shared with: user directly, or their groups, or their roles
-        const userGroups = user.groups || [];
-        const userRoles = user.roles || [];
+        const principals = await resolveUserPrincipals({ request, user });
+        const userGroups = principals.groupIds || [];
+        const userRoles = principals.roles || [];
         const shareConditions = [
             // Direct user share
             and(eq(tableViewShares.principalType, 'user'), eq(tableViewShares.principalId, user.sub)),

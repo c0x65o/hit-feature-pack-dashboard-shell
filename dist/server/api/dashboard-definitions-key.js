@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { sql } from 'drizzle-orm';
 import { extractUserFromRequest } from '../auth';
+import { resolveUserPrincipals } from '@hit/acl-utils';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export async function GET(request, { params }) {
@@ -14,8 +15,9 @@ export async function GET(request, { params }) {
         if (!key)
             return NextResponse.json({ error: 'Missing key' }, { status: 400 });
         const db = getDb();
-        const userGroups = user.groups || [];
-        const userRoles = user.roles || [];
+        const principals = await resolveUserPrincipals({ request, user });
+        const userGroups = principals.groupIds || [];
+        const userRoles = principals.roles || [];
         const groupList = userGroups.map((g) => sql `${g}`);
         const roleList = userRoles.map((r) => sql `${r}`);
         const sharedAccess = userGroups.length || userRoles.length
@@ -137,8 +139,9 @@ export async function PUT(request, { params }) {
         const db = getDb();
         const body = await request.json().catch(() => ({}));
         const isAdmin = user.roles?.includes('admin') || false;
-        const userGroups = user.roles || [];
-        const userRoles = user.roles || [];
+        const principals = await resolveUserPrincipals({ request, user });
+        const userGroups = principals.groupIds || [];
+        const userRoles = principals.roles || [];
         const groupList = userGroups.map((g) => sql `${g}`);
         const roleList = userRoles.map((r) => sql `${r}`);
         const existingRes = await db.execute(sql `

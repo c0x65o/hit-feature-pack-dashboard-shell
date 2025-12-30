@@ -1,6 +1,6 @@
 {
   "name": "@hit/feature-pack-dashboard-shell",
-  "version": "1.0.107",
+  "version": "1.0.108",
   "description": "Dashboard shell with sidebar, topbar, notifications, theme support, ERP UI kit, and table views",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -43,6 +43,7 @@
     "lint": "eslint src --ext .ts,.tsx"
   },
   "peerDependencies": {
+    "@hit/acl-utils": "*",
     "@hit/ui-kit": "*",
     "drizzle-orm": ">=0.30.0",
     "lucide-react": ">=0.263.0",
@@ -56,6 +57,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@hit/acl-utils": "file:../hit-acl-utils",
     "@hit/ui-kit": "file:../hit-ui-kit",
     "@types/node": "^20.0.0",
     "@types/react": "^18.0.0",

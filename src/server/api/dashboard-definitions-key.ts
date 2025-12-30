@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { sql } from 'drizzle-orm';
 import { extractUserFromRequest } from '../auth';
+import { resolveUserPrincipals } from '@hit/acl-utils';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -16,11 +17,12 @@ export async function GET(request: NextRequest, { params }: { params: { key: str
     if (!key) return NextResponse.json({ error: 'Missing key' }, { status: 400 });
 
     const db = getDb();
-    const userGroups = (user.groups as string[]) || [];
-    const userRoles = (user.roles as string[]) || [];
+    const principals = await resolveUserPrincipals({ request, user });
+    const userGroups = principals.groupIds || [];
+    const userRoles = principals.roles || [];
 
-    const groupList = userGroups.map((g) => sql`${g}`);
-    const roleList = userRoles.map((r) => sql`${r}`);
+    const groupList = userGroups.map((g: string) => sql`${g}`);
+    const roleList = userRoles.map((r: string) => sql`${r}`);
     const sharedAccess =
       userGroups.length || userRoles.length
         ? sql`exists (
@@ -145,10 +147,11 @@ export async function PUT(request: NextRequest, { params }: { params: { key: str
     const body = await request.json().catch(() => ({}));
     const isAdmin = (user.roles as string[])?.includes('admin') || false;
 
-    const userGroups = (user.roles as string[]) || [];
-    const userRoles = (user.roles as string[]) || [];
-    const groupList = userGroups.map((g) => sql`${g}`);
-    const roleList = userRoles.map((r) => sql`${r}`);
+    const principals = await resolveUserPrincipals({ request, user });
+    const userGroups = principals.groupIds || [];
+    const userRoles = principals.roles || [];
+    const groupList = userGroups.map((g: string) => sql`${g}`);
+    const roleList = userRoles.map((r: string) => sql`${r}`);
 
     const existingRes = await db.execute(sql`
       select

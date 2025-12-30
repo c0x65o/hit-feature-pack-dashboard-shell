@@ -4,6 +4,7 @@ import { getDb } from '@/lib/db';
 import { sql } from 'drizzle-orm';
 import { extractUserFromRequest } from '../auth';
 import crypto from 'node:crypto';
+import { resolveUserPrincipals } from '@hit/acl-utils';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 // Re-export schema(s) from a schema-only module so capability generation can import them safely.
@@ -28,8 +29,9 @@ export async function GET(request) {
         const { searchParams } = new URL(request.url);
         const pack = (searchParams.get('pack') || '').trim();
         const includeGlobal = (searchParams.get('includeGlobal') || 'true').toLowerCase() !== 'false';
-        const userGroups = user.groups || [];
-        const userRoles = user.roles || [];
+        const principals = await resolveUserPrincipals({ request, user });
+        const userGroups = principals.groupIds || [];
+        const userRoles = principals.roles || [];
         const scopeFilter = pack
             ? sql `(
             (d."scope"->>'kind' = 'pack' AND d."scope"->>'pack' = ${pack})
