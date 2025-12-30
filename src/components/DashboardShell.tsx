@@ -726,36 +726,6 @@ function ShellContent({
     setProfileStatus((prev) => ({ ...prev, error: null, success: null }));
   }, [user]);
 
-  // Persist per-user "read" state locally (MVP).
-  const readStorageKey = React.useMemo(() => {
-    const email = (currentUser?.email || '').trim();
-    return `dashboard-shell-notifications-read:v1:${email || 'anonymous'}`;
-  }, [currentUser?.email]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const raw = localStorage.getItem(readStorageKey);
-      if (!raw) return;
-      const arr = JSON.parse(raw);
-      if (Array.isArray(arr)) {
-        setReadNotificationIds(new Set(arr.map((x) => String(x))));
-      }
-    } catch {
-      // ignore
-    }
-  }, [readStorageKey]);
-
-  const persistReadIds = useCallback((next: Set<string>) => {
-    setReadNotificationIds(next);
-    if (typeof window === 'undefined') return;
-    try {
-      localStorage.setItem(readStorageKey, JSON.stringify([...next]));
-    } catch {
-      // ignore
-    }
-  }, [readStorageKey]);
-
   const enrichNotificationsWithReadState = useCallback((items: Notification[]) => {
     return items.map((n) => ({
       ...n,
@@ -763,11 +733,31 @@ function ShellContent({
     }));
   }, [readNotificationIds]);
 
-  const markVisibleNotificationsRead = useCallback((items: Notification[]) => {
-    const next = new Set(readNotificationIds);
-    for (const n of items) next.add(String(n.id));
-    persistReadIds(next);
-  }, [persistReadIds, readNotificationIds]);
+  const fetchReadIds = useCallback(async (ids: string[]): Promise<string[]> => {
+    const token = getStoredToken();
+    if (!token) return [] as string[];
+    if (ids.length === 0) return [] as string[];
+
+    const qp = ids.map((x) => encodeURIComponent(x)).join(',');
+    const res = await fetch(`/api/notification-reads?ids=${qp}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return [] as string[];
+    const json = await res.json().catch(() => ({}));
+    const readIds = Array.isArray((json as any)?.readIds) ? (json as any).readIds : [];
+    return readIds.map((x: any) => String(x));
+  }, []);
+
+  const upsertReadIds = useCallback(async (ids: string[]): Promise<void> => {
+    const token = getStoredToken();
+    if (!token) return;
+    if (ids.length === 0) return;
+    await fetch(`/api/notification-reads`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ ids }),
+    }).catch(() => {});
+  }, []);
 
   const fetchWorkflowTaskNotifications = useCallback(async (): Promise<Notification[]> => {
     // Only attempt if the workflows feature pack is installed (or if the endpoint exists).
@@ -944,9 +934,17 @@ function ShellContent({
       const workflowsItems = await fetchWorkflowTaskNotifications();
       const providerItems = await fetchConfiguredProviderNotifications();
       const merged = [...workflowsItems, ...providerItems, ...initialNotifications];
-      const enriched = enrichNotificationsWithReadState(merged);
+      const ids = merged.map((n) => String(n.id));
+      const readIds = await fetchReadIds(ids);
+      const readSet = new Set<string>(readIds);
+      setReadNotificationIds(readSet);
+      const enriched = merged.map((n) => ({ ...n, read: readSet.has(String(n.id)) }));
       if (opts?.markRead) {
-        markVisibleNotificationsRead(enriched);
+        const markIds = enriched.map((n) => String(n.id));
+        await upsertReadIds(markIds);
+        const nextSet = new Set<string>(readSet);
+        for (const id of markIds) nextSet.add(id);
+        setReadNotificationIds(nextSet);
         setNotifications(enriched.map((n) => ({ ...n, read: true })));
       } else {
         setNotifications(enriched);
@@ -960,12 +958,68 @@ function ShellContent({
     }
   }, [
     config.showNotifications,
-    enrichNotificationsWithReadState,
+    fetchReadIds,
     fetchConfiguredProviderNotifications,
     fetchWorkflowTaskNotifications,
     initialNotifications,
-    markVisibleNotificationsRead,
+    upsertReadIds,
   ]);
+
+  // Real-time: subscribe to events gateway and refresh the inbox on relevant events.
+  useEffect(() => {
+    if (!mounted) return;
+    let unsubscribers: Array<() => void> = [];
+    let cancelled = false;
+
+    const hasWorkflows = Boolean(hitConfig?.featurePacks?.workflows);
+    const patternsFromConfig =
+      (hitConfig?.dashboardShell as any)?.notificationRealtimePatterns ||
+      (hitConfig?.dashboardShell as any)?.notification_realtime_patterns ||
+      [];
+    const patterns: string[] = [
+      ...(hasWorkflows ? ['workflows.task.*'] : []),
+      ...(Array.isArray(patternsFromConfig) ? patternsFromConfig.map((p: any) => String(p || '').trim()).filter(Boolean) : []),
+    ];
+
+    // Dedup
+    const uniqPatterns = Array.from(new Set(patterns));
+    if (uniqPatterns.length === 0) return;
+
+    (async () => {
+      try {
+        const sdk = await import('@hit/sdk');
+        const eventsClient = (sdk as any)?.events;
+        if (!eventsClient?.subscribe) return;
+
+        const scheduleRefresh = (() => {
+          let t: any = null;
+          return () => {
+            if (t) return;
+            t = setTimeout(() => {
+              t = null;
+              if (cancelled) return;
+              refreshNotifications().catch(() => {});
+            }, 250);
+          };
+        })();
+
+        unsubscribers = uniqPatterns.map((pattern) => {
+          const sub = eventsClient.subscribe(pattern, () => scheduleRefresh());
+          return () => sub?.unsubscribe?.();
+        });
+      } catch {
+        // SDK not available or realtime not configured; ignore.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      for (const u of unsubscribers) {
+        try { u(); } catch {}
+      }
+      unsubscribers = [];
+    };
+  }, [hitConfig, mounted, refreshNotifications]);
 
   // Fetch whenever the dropdown opens (and once on mount).
   useEffect(() => {

@@ -28,6 +28,10 @@ export {
   type DashboardDefinitionShare,
   type InsertDashboardDefinition,
   type InsertDashboardDefinitionShare,
+  // Notification reads
+  notificationReads,
+  type NotificationRead,
+  type InsertNotificationRead,
 } from '../schema/table-views';
 
 
