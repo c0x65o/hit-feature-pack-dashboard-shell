@@ -593,7 +593,7 @@ function ShellContent({ children, config, navItems, user, activePath, onNavigate
                         path: `/api/workflows/runs/${encodeURIComponent(runId)}/tasks/${encodeURIComponent(taskId)}/approve`,
                         confirm: {
                             title: 'Approve request?',
-                            message: 'This will approve the workflow task for your group.',
+                            message: 'This will approve the workflow task.',
                             confirmText: 'Approve',
                             cancelText: 'Cancel',
                         },
@@ -607,7 +607,7 @@ function ShellContent({ children, config, navItems, user, activePath, onNavigate
                         path: `/api/workflows/runs/${encodeURIComponent(runId)}/tasks/${encodeURIComponent(taskId)}/deny`,
                         confirm: {
                             title: 'Deny request?',
-                            message: 'This will deny the workflow task for your group.',
+                            message: 'This will deny the workflow task.',
                             confirmText: 'Deny',
                             cancelText: 'Cancel',
                         },
