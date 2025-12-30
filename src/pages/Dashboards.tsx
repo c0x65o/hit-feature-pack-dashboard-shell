@@ -231,6 +231,14 @@ function palette(idx: number) {
   return colors[idx % colors.length];
 }
 
+function pickEntityKindForMetric(item?: MetricCatalogItem | null): string | undefined {
+  const kinds = Array.isArray(item?.entity_kinds) ? item!.entity_kinds!.filter((k) => typeof k === 'string' && k) : [];
+  if (kinds.length === 0) return undefined;
+  // Prefer project when a metric supports multiple scoping kinds.
+  if (kinds.includes('project')) return 'project';
+  return kinds[0];
+}
+
 function Donut({
   slices,
   format,
@@ -929,14 +937,21 @@ export function Dashboards() {
             const catalogMap = Object.keys(catalogByKey || {}).length ? catalogByKey : await fetchCatalogMap();
             if (!Object.keys(catalogByKey || {}).length && Object.keys(catalogMap).length) setCatalogByKey(catalogMap);
             const pres = w?.presentation || {};
-            const entityKind = typeof pres?.entityKind === 'string' ? pres.entityKind : 'project';
+            const rawEntityKind = typeof pres?.entityKind === 'string' ? pres.entityKind.trim() : '';
+            const isAutoEntityKind = rawEntityKind === '' || rawEntityKind.toLowerCase() === 'auto';
+            const entityKind = !isAutoEntityKind ? rawEntityKind : '';
             const onlyWithPoints = pres?.onlyWithPoints === true;
 
             const items = Object.values(catalogMap || {});
             const filtered = items
               .filter((it) => {
-                const kinds = Array.isArray(it.entity_kinds) ? it.entity_kinds : [];
-                if (kinds.length && !kinds.includes(entityKind)) return false;
+                if (!isAutoEntityKind) {
+                  const kinds = Array.isArray(it.entity_kinds) ? it.entity_kinds : [];
+                  // If the metric declares supported entity kinds, respect it.
+                  // If it doesn't, we cannot safely assume it works for the chosen entityKind.
+                  if (kinds.length === 0) return false;
+                  if (!kinds.includes(entityKind)) return false;
+                }
                 if (onlyWithPoints && Number(it.pointsCount || 0) <= 0) return false;
                 return true;
               })
@@ -952,7 +967,10 @@ export function Dashboards() {
                 const roll = String(it.rollup_strategy || '').toLowerCase();
                 const timeKind = String(it.time_kind || '').toLowerCase();
                 const agg: Agg = roll === 'last' || timeKind === 'realtime' || timeKind === 'none' ? 'last' : 'sum';
-                const body: any = { metricKey: mk, bucket: 'none', agg, entityKind, groupByEntityId: true };
+                const ek = isAutoEntityKind ? pickEntityKindForMetric(it) : entityKind;
+                // If we can't infer entityKind, omit it and let the backend aggregate across all kinds.
+                const body: any = { metricKey: mk, bucket: 'none', agg, groupByEntityId: true };
+                if (ek) body.entityKind = ek;
                 if (t) Object.assign(body, t);
                 return body;
               })
