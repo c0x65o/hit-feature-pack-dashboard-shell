@@ -1264,14 +1264,22 @@ export function Dashboards() {
                                 if (w.kind === 'kpi_catalog') {
                                     const st = kpiCatalogTotals[w.key];
                                     const pres = w?.presentation || {};
-                                    const entityKind = typeof pres?.entityKind === 'string' ? pres.entityKind : 'project';
+                                    const rawEntityKind = typeof pres?.entityKind === 'string' ? pres.entityKind.trim() : '';
+                                    const isAutoEntityKind = rawEntityKind === '' || rawEntityKind.toLowerCase() === 'auto';
+                                    const entityKind = !isAutoEntityKind ? rawEntityKind : '';
                                     const onlyWithPoints = pres?.onlyWithPoints === true;
                                     const items = Object.values(catalogByKey || {});
                                     const filtered = items
                                         .filter((it) => {
-                                        const kinds = Array.isArray(it.entity_kinds) ? it.entity_kinds : [];
-                                        if (kinds.length && !kinds.includes(entityKind))
-                                            return false;
+                                        if (!isAutoEntityKind) {
+                                            const kinds = Array.isArray(it.entity_kinds) ? it.entity_kinds : [];
+                                            // If the metric declares supported entity kinds, respect it.
+                                            // If it doesn't, we cannot safely assume it works for the chosen entityKind.
+                                            if (kinds.length === 0)
+                                                return false;
+                                            if (!kinds.includes(entityKind))
+                                                return false;
+                                        }
                                         if (onlyWithPoints && Number(it.pointsCount || 0) <= 0)
                                             return false;
                                         return true;
