@@ -2,7 +2,7 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import { Menu, Bell, User, Settings, LogOut, ChevronRight, ChevronDown, } from 'lucide-react';
-import { Monitor, Moon, Sun, X } from 'lucide-react';
+import { Monitor, Moon, Sun, X, RotateCw } from 'lucide-react';
 import { UiKitProvider, ThemeProvider, useThemeTokens, useTheme, styles, defaultKit } from '@hit/ui-kit';
 import { LucideIcon } from '../utils/lucide-dynamic';
 const ShellContext = createContext(null);
@@ -361,7 +361,10 @@ function ShellContent({ children, config, navItems, user, activePath, onNavigate
     const [showNotifications, setShowNotifications] = useState(false);
     const [showAppearanceModal, setShowAppearanceModal] = useState(false);
     const [showProfileModal, setShowProfileModal] = useState(false);
-    const [notifications] = useState(initialNotifications);
+    const [notifications, setNotifications] = useState(initialNotifications);
+    const [notificationsLoading, setNotificationsLoading] = useState(false);
+    const [notificationsError, setNotificationsError] = useState(null);
+    const [readNotificationIds, setReadNotificationIds] = useState(() => new Set());
     // Collapsed rail flyout state - shared across all nav items
     const [openFlyoutId, setOpenFlyoutId] = useState(null);
     const flyoutCloseTimeoutRef = React.useRef(null);
@@ -485,6 +488,284 @@ function ShellContent({ children, config, navItems, user, activePath, onNavigate
         setProfileMetadata({});
         setProfileStatus((prev) => ({ ...prev, error: null, success: null }));
     }, [user]);
+    // Persist per-user "read" state locally (MVP).
+    const readStorageKey = React.useMemo(() => {
+        const email = (currentUser?.email || '').trim();
+        return `dashboard-shell-notifications-read:v1:${email || 'anonymous'}`;
+    }, [currentUser?.email]);
+    useEffect(() => {
+        if (typeof window === 'undefined')
+            return;
+        try {
+            const raw = localStorage.getItem(readStorageKey);
+            if (!raw)
+                return;
+            const arr = JSON.parse(raw);
+            if (Array.isArray(arr)) {
+                setReadNotificationIds(new Set(arr.map((x) => String(x))));
+            }
+        }
+        catch {
+            // ignore
+        }
+    }, [readStorageKey]);
+    const persistReadIds = useCallback((next) => {
+        setReadNotificationIds(next);
+        if (typeof window === 'undefined')
+            return;
+        try {
+            localStorage.setItem(readStorageKey, JSON.stringify([...next]));
+        }
+        catch {
+            // ignore
+        }
+    }, [readStorageKey]);
+    const enrichNotificationsWithReadState = useCallback((items) => {
+        return items.map((n) => ({
+            ...n,
+            read: readNotificationIds.has(String(n.id)),
+        }));
+    }, [readNotificationIds]);
+    const markVisibleNotificationsRead = useCallback((items) => {
+        const next = new Set(readNotificationIds);
+        for (const n of items)
+            next.add(String(n.id));
+        persistReadIds(next);
+    }, [persistReadIds, readNotificationIds]);
+    const fetchWorkflowTaskNotifications = useCallback(async () => {
+        // Only attempt if the workflows feature pack is installed (or if the endpoint exists).
+        const hasWorkflows = Boolean(hitConfig?.featurePacks?.workflows);
+        if (!hasWorkflows)
+            return [];
+        const token = getStoredToken();
+        if (!token)
+            return [];
+        const res = await fetch(`/api/workflows/tasks?limit=50&includeResolved=true&resolvedWithinHours=24`, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) {
+            // If workflows is installed but endpoint isn't available yet, don't spam errors.
+            return [];
+        }
+        const json = await res.json().catch(() => ({}));
+        const items = Array.isArray(json?.items) ? json.items : [];
+        const mapped = items.map((t) => {
+            const taskId = String(t?.id ?? '');
+            const runId = String(t?.runId ?? t?.run_id ?? '');
+            const statusRaw = String(t?.status ?? 'open');
+            const status = statusRaw === 'open' ? 'open' : 'resolved';
+            const prompt = t?.prompt && typeof t.prompt === 'object' ? t.prompt : {};
+            const title = typeof prompt?.title === 'string'
+                ? prompt.title
+                : t?.type === 'approval'
+                    ? 'Approval required'
+                    : 'Workflow task';
+            const message = typeof prompt?.message === 'string'
+                ? prompt.message
+                : typeof prompt?.text === 'string'
+                    ? prompt.text
+                    : `A workflow is waiting for human action.`;
+            const decidedBy = t?.decidedByUserId || t?.decided_by_user_id || null;
+            const decision = t?.decision && typeof t.decision === 'object' ? t.decision : {};
+            const decisionSummary = typeof decision?.action === 'string' ? decision.action : null;
+            const base = {
+                id: `workflows:task:${taskId}`,
+                type: 'system',
+                title,
+                message,
+                timestamp: t?.createdAt || t?.created_at || new Date().toISOString(),
+                read: false,
+                priority: 'high',
+                status,
+                resolved: status === 'resolved'
+                    ? {
+                        at: t?.decidedAt || t?.decided_at || undefined,
+                        by: decidedBy ? String(decidedBy) : undefined,
+                        summary: decisionSummary ? String(decisionSummary) : undefined,
+                    }
+                    : undefined,
+                meta: {
+                    pack: 'workflows',
+                    taskId,
+                    runId,
+                    workflowId: t?.workflowId || t?.workflow_id,
+                    rawStatus: statusRaw,
+                },
+            };
+            if (status === 'open' && taskId && runId) {
+                base.actions = [
+                    {
+                        id: 'approve',
+                        label: 'Approve',
+                        variant: 'primary',
+                        kind: 'api',
+                        method: 'POST',
+                        path: `/api/workflows/runs/${encodeURIComponent(runId)}/tasks/${encodeURIComponent(taskId)}/approve`,
+                        confirm: {
+                            title: 'Approve request?',
+                            message: 'This will approve the workflow task for your group.',
+                            confirmText: 'Approve',
+                            cancelText: 'Cancel',
+                        },
+                    },
+                    {
+                        id: 'deny',
+                        label: 'Deny',
+                        variant: 'danger',
+                        kind: 'api',
+                        method: 'POST',
+                        path: `/api/workflows/runs/${encodeURIComponent(runId)}/tasks/${encodeURIComponent(taskId)}/deny`,
+                        confirm: {
+                            title: 'Deny request?',
+                            message: 'This will deny the workflow task for your group.',
+                            confirmText: 'Deny',
+                            cancelText: 'Cancel',
+                        },
+                    },
+                ];
+            }
+            return base;
+        });
+        return mapped;
+    }, [hitConfig?.featurePacks?.workflows]);
+    const fetchConfiguredProviderNotifications = useCallback(async () => {
+        const token = getStoredToken();
+        if (!token)
+            return [];
+        // Allow apps to plug additional providers into the shell feed without modifying shell code.
+        // Expected shape:
+        //   hitConfig.dashboardShell.notificationProviders = [{ id: 'crm', path: '/api/crm/notifications' }, ...]
+        const rawProviders = hitConfig?.dashboardShell?.notificationProviders ||
+            hitConfig?.dashboardShell?.notification_providers ||
+            hitConfig?.featurePacks?.['dashboard-shell']?.notification_providers ||
+            hitConfig?.featurePacks?.dashboardShell?.notificationProviders ||
+            [];
+        const providers = Array.isArray(rawProviders)
+            ? rawProviders
+                .map((p) => ({
+                id: typeof p?.id === 'string' ? p.id.trim() : '',
+                path: typeof p?.path === 'string' ? p.path.trim() : '',
+            }))
+                .filter((p) => p.id && p.path)
+            : [];
+        if (providers.length === 0)
+            return [];
+        const results = await Promise.all(providers.map(async (p) => {
+            try {
+                const res = await fetch(p.path, { headers: { Authorization: `Bearer ${token}` } });
+                if (!res.ok)
+                    return [];
+                const json = await res.json().catch(() => null);
+                const items = Array.isArray(json?.items)
+                    ? json.items
+                    : Array.isArray(json)
+                        ? json
+                        : [];
+                return items
+                    .filter(Boolean)
+                    .map((n) => {
+                    const id = n?.id !== undefined && n?.id !== null ? n.id : Math.random().toString(36).slice(2);
+                    return {
+                        id: `${p.id}:${String(id)}`,
+                        type: typeof n?.type === 'string' ? n.type : p.id,
+                        title: typeof n?.title === 'string' ? n.title : 'Notification',
+                        message: typeof n?.message === 'string' ? n.message : '',
+                        timestamp: n?.timestamp || new Date().toISOString(),
+                        read: Boolean(n?.read),
+                        priority: n?.priority,
+                        status: n?.status,
+                        resolved: n?.resolved,
+                        actions: n?.actions,
+                        meta: { ...(n?.meta || {}), providerId: p.id },
+                    };
+                });
+            }
+            catch {
+                return [];
+            }
+        }));
+        return results.flat();
+    }, [hitConfig]);
+    const refreshNotifications = useCallback(async (opts) => {
+        if (!config.showNotifications)
+            return [];
+        setNotificationsLoading(true);
+        setNotificationsError(null);
+        try {
+            const workflowsItems = await fetchWorkflowTaskNotifications();
+            const providerItems = await fetchConfiguredProviderNotifications();
+            const merged = [...workflowsItems, ...providerItems, ...initialNotifications];
+            const enriched = enrichNotificationsWithReadState(merged);
+            if (opts?.markRead) {
+                markVisibleNotificationsRead(enriched);
+                setNotifications(enriched.map((n) => ({ ...n, read: true })));
+            }
+            else {
+                setNotifications(enriched);
+            }
+            return enriched;
+        }
+        catch (e) {
+            setNotificationsError(e instanceof Error ? e.message : 'Failed to load notifications');
+            return [];
+        }
+        finally {
+            setNotificationsLoading(false);
+        }
+    }, [
+        config.showNotifications,
+        enrichNotificationsWithReadState,
+        fetchConfiguredProviderNotifications,
+        fetchWorkflowTaskNotifications,
+        initialNotifications,
+        markVisibleNotificationsRead,
+    ]);
+    // Fetch whenever the dropdown opens (and once on mount).
+    useEffect(() => {
+        if (!mounted)
+            return;
+        refreshNotifications();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [mounted]);
+    const runNotificationAction = useCallback(async (action) => {
+        if (!action || action.kind !== 'api')
+            return;
+        const token = getStoredToken();
+        if (!token) {
+            setNotificationsError('You must be signed in to take this action.');
+            return;
+        }
+        const needsConfirm = action.confirm && typeof action.confirm === 'object';
+        if (needsConfirm) {
+            const ok = window.confirm(`${action.confirm.title}\n\n${action.confirm.message}`);
+            if (!ok)
+                return;
+        }
+        try {
+            const res = await fetch(action.path, {
+                method: action.method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: action.body ? JSON.stringify(action.body) : JSON.stringify({}),
+            });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                const msg = json?.error || json?.detail || `Action failed (${res.status})`;
+                setNotificationsError(String(msg));
+            }
+            else {
+                setNotificationsError(null);
+            }
+        }
+        catch (e) {
+            setNotificationsError(e instanceof Error ? e.message : 'Action failed');
+        }
+        finally {
+            await refreshNotifications();
+        }
+    }, [refreshNotifications]);
     // Note: hitConfig is now read synchronously from window.__HIT_CONFIG
     // No fetch needed - config is static and injected by HitAppProvider
     // Load persisted state from localStorage on mount
@@ -867,21 +1148,113 @@ function ShellContent({ children, config, navItems, user, activePath, onNavigate
                                     justifyContent: 'space-between',
                                     padding: `0 ${spacing['2xl']}`,
                                     flexShrink: 0,
-                                }), children: [_jsx("div", { style: styles({ display: 'flex', alignItems: 'center', gap: spacing.lg }) }), _jsxs("div", { style: styles({ display: 'flex', alignItems: 'center', gap: spacing.sm }), children: [config.showThemeToggle && (_jsx("button", { onClick: openAppearance, style: iconButtonStyle, "aria-label": "Theme settings", children: resolvedTheme === 'dark' ? _jsx(Moon, { size: 20 }) : _jsx(Sun, { size: 20 }) })), config.showNotifications && (_jsx("div", { style: { position: 'relative' }, children: _jsxs("button", { onClick: () => { setShowNotifications(!showNotifications); setShowProfileMenu(false); }, style: iconButtonStyle, children: [_jsx(Bell, { size: 20 }), unreadCount > 0 && (_jsx("span", { style: styles({
-                                                                position: 'absolute',
-                                                                top: '4px',
-                                                                right: '4px',
-                                                                width: '18px',
-                                                                height: '18px',
-                                                                backgroundColor: colors.error.default,
-                                                                color: colors.text.inverse,
-                                                                fontSize: '11px',
-                                                                fontWeight: 600,
-                                                                borderRadius: radius.full,
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                justifyContent: 'center',
-                                                            }), children: unreadCount > 9 ? '9+' : unreadCount }))] }) })), config.showUserMenu && (_jsxs("div", { style: { position: 'relative' }, children: [_jsxs("button", { onClick: () => { setShowProfileMenu(!showProfileMenu); setShowNotifications(false); }, style: styles({
+                                }), children: [_jsx("div", { style: styles({ display: 'flex', alignItems: 'center', gap: spacing.lg }) }), _jsxs("div", { style: styles({ display: 'flex', alignItems: 'center', gap: spacing.sm }), children: [config.showThemeToggle && (_jsx("button", { onClick: openAppearance, style: iconButtonStyle, "aria-label": "Theme settings", children: resolvedTheme === 'dark' ? _jsx(Moon, { size: 20 }) : _jsx(Sun, { size: 20 }) })), config.showNotifications && (_jsxs("div", { style: { position: 'relative' }, children: [_jsxs("button", { onClick: () => {
+                                                            const next = !showNotifications;
+                                                            setShowNotifications(next);
+                                                            setShowProfileMenu(false);
+                                                            if (next) {
+                                                                refreshNotifications({ markRead: true });
+                                                            }
+                                                        }, style: iconButtonStyle, children: [_jsx(Bell, { size: 20 }), unreadCount > 0 && (_jsx("span", { style: styles({
+                                                                    position: 'absolute',
+                                                                    top: '4px',
+                                                                    right: '4px',
+                                                                    width: '18px',
+                                                                    height: '18px',
+                                                                    backgroundColor: colors.error.default,
+                                                                    color: colors.text.inverse,
+                                                                    fontSize: '11px',
+                                                                    fontWeight: 600,
+                                                                    borderRadius: radius.full,
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'center',
+                                                                }), children: unreadCount > 9 ? '9+' : unreadCount }))] }), showNotifications && (_jsxs(_Fragment, { children: [_jsx("div", { onClick: () => setShowNotifications(false), style: styles({ position: 'fixed', inset: 0, zIndex: 40 }) }), _jsxs("div", { style: styles({
+                                                                    position: 'absolute',
+                                                                    right: 0,
+                                                                    top: '100%',
+                                                                    marginTop: spacing.sm,
+                                                                    width: 'min(420px, calc(100vw - 32px))',
+                                                                    backgroundColor: colors.bg.surface,
+                                                                    border: `1px solid ${colors.border.default}`,
+                                                                    borderRadius: radius.lg,
+                                                                    boxShadow: shadows.xl,
+                                                                    zIndex: 50,
+                                                                    overflow: 'hidden',
+                                                                }), children: [_jsxs("div", { style: styles({
+                                                                            padding: `${spacing.md} ${spacing.lg}`,
+                                                                            borderBottom: `1px solid ${colors.border.subtle}`,
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            justifyContent: 'space-between',
+                                                                            gap: spacing.md,
+                                                                        }), children: [_jsxs("div", { style: styles({ display: 'flex', flexDirection: 'column', gap: spacing.px }), children: [_jsx("div", { style: styles({ fontSize: ts.body.fontSize, fontWeight: 700, color: colors.text.primary }), children: "Inbox" }), _jsx("div", { style: styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.muted }), children: notificationsLoading ? 'Loading…' : `${notifications.length} item(s)` })] }), _jsxs("div", { style: styles({ display: 'flex', alignItems: 'center', gap: spacing.xs }), children: [_jsx("button", { onClick: () => refreshNotifications(), style: styles({
+                                                                                            ...iconButtonStyle,
+                                                                                            width: '36px',
+                                                                                            height: '36px',
+                                                                                            backgroundColor: colors.bg.muted,
+                                                                                        }), "aria-label": "Refresh notifications", title: "Refresh", children: _jsx(RotateCw, { size: 16 }) }), _jsx("button", { onClick: () => setShowNotifications(false), style: styles({
+                                                                                            ...iconButtonStyle,
+                                                                                            width: '36px',
+                                                                                            height: '36px',
+                                                                                            backgroundColor: colors.bg.muted,
+                                                                                        }), "aria-label": "Close notifications", title: "Close", children: _jsx(X, { size: 16 }) })] })] }), notificationsError && (_jsx("div", { style: styles({
+                                                                            padding: `${spacing.sm} ${spacing.lg}`,
+                                                                            backgroundColor: colors.bg.muted,
+                                                                            borderBottom: `1px solid ${colors.border.subtle}`,
+                                                                            color: colors.error.default,
+                                                                            fontSize: ts.bodySmall.fontSize,
+                                                                        }), children: notificationsError })), _jsx("div", { style: styles({ maxHeight: '420px', overflowY: 'auto' }), children: notifications.length === 0 && !notificationsLoading ? (_jsx("div", { style: styles({
+                                                                                padding: `${spacing.lg} ${spacing.lg}`,
+                                                                                color: colors.text.muted,
+                                                                                fontSize: ts.body.fontSize,
+                                                                            }), children: "No notifications yet." })) : (_jsx("div", { style: styles({ padding: spacing.sm, display: 'flex', flexDirection: 'column', gap: spacing.sm }), children: notifications.map((n) => {
+                                                                                const isUnread = !n.read;
+                                                                                const status = n.status || (n.read ? 'resolved' : 'open');
+                                                                                const tsRaw = n.timestamp;
+                                                                                const tsStr = (() => {
+                                                                                    try {
+                                                                                        const d = tsRaw instanceof Date ? tsRaw : new Date(tsRaw);
+                                                                                        return d.toLocaleString();
+                                                                                    }
+                                                                                    catch {
+                                                                                        return String(tsRaw);
+                                                                                    }
+                                                                                })();
+                                                                                return (_jsxs("div", { style: styles({
+                                                                                        padding: `${spacing.md} ${spacing.lg}`,
+                                                                                        borderRadius: radius.lg,
+                                                                                        border: `1px solid ${isUnread ? colors.primary.default : colors.border.subtle}`,
+                                                                                        backgroundColor: isUnread ? `${colors.primary.default}10` : colors.bg.page,
+                                                                                        display: 'flex',
+                                                                                        flexDirection: 'column',
+                                                                                        gap: spacing.sm,
+                                                                                    }), children: [_jsxs("div", { style: styles({ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.md }), children: [_jsxs("div", { style: styles({ display: 'flex', flexDirection: 'column', gap: spacing.xs, minWidth: 0, flex: 1 }), children: [_jsx("div", { style: styles({
+                                                                                                                fontSize: ts.body.fontSize,
+                                                                                                                fontWeight: 700,
+                                                                                                                color: colors.text.primary,
+                                                                                                                overflow: 'hidden',
+                                                                                                                textOverflow: 'ellipsis',
+                                                                                                                whiteSpace: 'nowrap',
+                                                                                                            }), children: n.title }), _jsx("div", { style: styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.muted }), children: tsStr })] }), _jsx("div", { style: styles({
+                                                                                                        padding: '2px 8px',
+                                                                                                        borderRadius: radius.full,
+                                                                                                        fontSize: '11px',
+                                                                                                        fontWeight: 700,
+                                                                                                        backgroundColor: status === 'open' ? `${colors.warning.default}20` : `${colors.success.default}20`,
+                                                                                                        color: status === 'open' ? colors.warning.default : colors.success.default,
+                                                                                                        flexShrink: 0,
+                                                                                                    }), children: status === 'open' ? 'OPEN' : 'RESOLVED' })] }), _jsx("div", { style: styles({ fontSize: ts.body.fontSize, color: colors.text.secondary }), children: n.message }), n.resolved?.summary || n.resolved?.by ? (_jsxs("div", { style: styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.muted }), children: [n.resolved?.summary ? `${n.resolved.summary}` : 'Resolved', n.resolved?.by ? ` by ${n.resolved.by}` : ''] })) : null, Array.isArray(n.actions) && n.actions.length > 0 ? (_jsx("div", { style: styles({ display: 'flex', gap: spacing.sm, justifyContent: 'flex-end', flexWrap: 'wrap' }), children: n.actions.map((a) => (_jsx("button", { onClick: () => runNotificationAction(a), style: styles({
+                                                                                                    padding: `${spacing.xs} ${spacing.md}`,
+                                                                                                    borderRadius: radius.md,
+                                                                                                    border: 'none',
+                                                                                                    cursor: 'pointer',
+                                                                                                    fontSize: ts.bodySmall.fontSize,
+                                                                                                    fontWeight: 700,
+                                                                                                    backgroundColor: a.variant === 'danger' ? colors.error.default : a.variant === 'secondary' ? colors.bg.muted : colors.primary.default,
+                                                                                                    color: a.variant === 'secondary' ? colors.text.primary : colors.text.inverse,
+                                                                                                }), children: a.label }, a.id))) })) : null] }, String(n.id)));
+                                                                            }) })) })] })] }))] })), config.showUserMenu && (_jsxs("div", { style: { position: 'relative' }, children: [_jsxs("button", { onClick: () => { setShowProfileMenu(!showProfileMenu); setShowNotifications(false); }, style: styles({
                                                             display: 'flex',
                                                             alignItems: 'center',
                                                             gap: spacing.md,

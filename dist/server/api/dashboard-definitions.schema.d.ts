@@ -25,9 +25,9 @@ export declare const postBodySchema: z.ZodObject<{
     sourceKey: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     name: string;
+    pack?: string | undefined;
     visibility?: "public" | "private" | undefined;
     key?: string | undefined;
-    pack?: string | undefined;
     description?: string | undefined;
     definition?: Record<string, any> | undefined;
     scope?: {
@@ -39,9 +39,9 @@ export declare const postBodySchema: z.ZodObject<{
     sourceKey?: string | undefined;
 }, {
     name: string;
+    pack?: string | undefined;
     visibility?: "public" | "private" | undefined;
     key?: string | undefined;
-    pack?: string | undefined;
     description?: string | undefined;
     definition?: Record<string, any> | undefined;
     scope?: {

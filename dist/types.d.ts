@@ -67,6 +67,33 @@ export interface ShellUser {
 /**
  * Notification item
  */
+export interface NotificationAction {
+    id: string;
+    label: string;
+    variant?: 'primary' | 'danger' | 'secondary';
+    /**
+     * For now we only support calling an API route (same-origin) from the shell.
+     * This keeps actions feature-pack-owned while the shell provides the UX.
+     */
+    kind: 'api';
+    method: 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+    path: string;
+    body?: Record<string, unknown>;
+    /**
+     * Optional confirmation prompt before executing.
+     */
+    confirm?: {
+        title: string;
+        message: string;
+        confirmText?: string;
+        cancelText?: string;
+    };
+}
+export interface NotificationResolution {
+    at?: Date | string;
+    by?: string;
+    summary?: string;
+}
 export interface Notification {
     id: string | number;
     type?: 'order' | 'inventory' | 'payment' | 'hr' | 'error' | 'system' | string;
@@ -75,6 +102,16 @@ export interface Notification {
     timestamp: Date | string;
     read: boolean;
     priority?: 'high' | 'medium' | 'low';
+    /**
+     * Feed-style metadata (optional).
+     */
+    status?: 'open' | 'resolved';
+    resolved?: NotificationResolution;
+    actions?: NotificationAction[];
+    /**
+     * Opaque metadata for the source feature pack (e.g., { pack: 'workflows', runId, taskId }).
+     */
+    meta?: Record<string, unknown>;
 }
 /**
  * Shell state (internal)
