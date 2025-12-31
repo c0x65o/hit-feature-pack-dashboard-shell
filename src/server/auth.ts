@@ -50,10 +50,17 @@ export function extractUserFromRequest(request: NextRequest): User | null {
               .filter(Boolean)
           : [];
 
+      const email =
+        payload.email ||
+        payload.preferred_username ||
+        payload.upn ||
+        payload.unique_name ||
+        '';
+
       return {
-        sub: payload.sub || payload.email || '',
-        email: payload.email || '',
-        name: payload.name || payload.email || '',
+        sub: payload.sub || email || '',
+        email: email || '',
+        name: payload.name || email || '',
         roles: payload.roles || [],
         groups,
         featurePacks: (payload.featurePacks && typeof payload.featurePacks === 'object') ? payload.featurePacks : undefined,
