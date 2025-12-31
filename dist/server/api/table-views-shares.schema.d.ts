@@ -1,12 +1,10 @@
 import { z } from "zod";
 export declare const postBodySchema: z.ZodObject<{
-    principalType: z.ZodEnum<["user", "group", "role"]>;
+    principalType: z.ZodEnum<{
+        group: "group";
+        user: "user";
+        role: "role";
+    }>;
     principalId: z.ZodString;
-}, "strip", z.ZodTypeAny, {
-    principalType: "group" | "user" | "role";
-    principalId: string;
-}, {
-    principalType: "group" | "user" | "role";
-    principalId: string;
-}>;
+}, z.core.$strip>;
 //# sourceMappingURL=table-views-shares.schema.d.ts.map

@@ -9,58 +9,12 @@ export declare const postBodySchema: z.ZodObject<{
         value: z.ZodOptional<z.ZodNullable<z.ZodAny>>;
         valueType: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         metadata: z.ZodOptional<z.ZodNullable<z.ZodAny>>;
-    }, "strip", z.ZodTypeAny, {
-        operator: string;
-        field: string;
-        metadata?: any;
-        value?: any;
-        valueType?: string | null | undefined;
-    }, {
-        operator: string;
-        field: string;
-        metadata?: any;
-        value?: any;
-        valueType?: string | null | undefined;
-    }>, "many">>;
+    }, z.core.$strip>>>;
     columnVisibility: z.ZodOptional<z.ZodNullable<z.ZodAny>>;
     sorting: z.ZodOptional<z.ZodNullable<z.ZodAny>>;
     groupBy: z.ZodOptional<z.ZodNullable<z.ZodAny>>;
     isDefault: z.ZodOptional<z.ZodBoolean>;
     isSystem: z.ZodOptional<z.ZodBoolean>;
     metadata: z.ZodOptional<z.ZodNullable<z.ZodAny>>;
-}, "strip", z.ZodTypeAny, {
-    name: string;
-    tableId: string;
-    metadata?: any;
-    description?: string | null | undefined;
-    isDefault?: boolean | undefined;
-    isSystem?: boolean | undefined;
-    columnVisibility?: any;
-    sorting?: any;
-    groupBy?: any;
-    filters?: {
-        operator: string;
-        field: string;
-        metadata?: any;
-        value?: any;
-        valueType?: string | null | undefined;
-    }[] | undefined;
-}, {
-    name: string;
-    tableId: string;
-    metadata?: any;
-    description?: string | null | undefined;
-    isDefault?: boolean | undefined;
-    isSystem?: boolean | undefined;
-    columnVisibility?: any;
-    sorting?: any;
-    groupBy?: any;
-    filters?: {
-        operator: string;
-        field: string;
-        metadata?: any;
-        value?: any;
-        valueType?: string | null | undefined;
-    }[] | undefined;
-}>;
+}, z.core.$strip>;
 //# sourceMappingURL=table-views.schema.d.ts.map
