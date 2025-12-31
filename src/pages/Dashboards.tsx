@@ -918,7 +918,7 @@ export function Dashboards(_props: DashboardsProps = {}) {
         items = normalizeItems(Array.isArray(json.data) ? json.data : []);
       } else {
         // Fetch dashboards for the default packs in parallel.
-        const results = await Promise.all(
+        const results = await Promise.allSettled(
           defaultPacks.map(async (p) => {
             const u = `/api/dashboard-definitions?pack=${encodeURIComponent(p)}&includeGlobal=false`;
             const res = await fetch(u);
@@ -929,7 +929,18 @@ export function Dashboards(_props: DashboardsProps = {}) {
             return xs.map((d) => ({ ...d, pack: d.pack || p }));
           })
         );
-        items = results.flat();
+
+        const errs: string[] = [];
+        const ok: DashboardListItem[][] = [];
+        results.forEach((r, idx) => {
+          if (r.status === 'fulfilled') ok.push(r.value);
+          else errs.push(`${defaultPacks[idx]}: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`);
+        });
+
+        items = ok.flat();
+        if (errs.length) {
+          setError(`Some packs failed to load dashboards: ${errs.join(' | ')}`);
+        }
         // Stable sort: pack then dashboard name.
         items.sort((a, b) => (String(a.pack || '').localeCompare(String(b.pack || ''))) || a.name.localeCompare(b.name));
       }
