@@ -57,6 +57,7 @@ function getStatusLabel(status: number): string {
 
 export function ErrorLog() {
   const { Page, Card, Button, Input, Badge, Modal, EmptyState, Spinner, Alert, Tabs } = useUi();
+  const errorLogState = useErrorLog();
   const {
     errors,
     enabled,
@@ -65,7 +66,11 @@ export function ErrorLog() {
     clearError,
     setEnabled,
     exportErrors,
-  } = useErrorLog();
+  } = errorLogState;
+  // Handle backwards compatibility - isProviderAvailable may not exist in older versions
+  const isProviderAvailable = 'isProviderAvailable' in errorLogState 
+    ? (errorLogState as { isProviderAvailable: boolean }).isProviderAvailable 
+    : errors.length > 0 || enabled;
 
   // State
   const [searchQuery, setSearchQuery] = useState('');
@@ -346,7 +351,16 @@ export function ErrorLog() {
       </div>
 
       {/* Status Banner */}
-      {!enabled && (
+      {!isProviderAvailable && (
+        <div style={{ padding: '0 16px 16px' }}>
+          <Alert variant="error" title="Provider Not Available">
+            ErrorLogProvider is not wrapping this page. Error logging will not work.
+            This typically happens due to module resolution issues in monorepos.
+            Ensure ErrorLogProvider is in your app&apos;s provider hierarchy.
+          </Alert>
+        </div>
+      )}
+      {isProviderAvailable && !enabled && (
         <div style={{ padding: '0 16px 16px' }}>
           <Alert variant="warning" title="Logging Paused">
             Error logging is currently paused. New errors will not be captured.
