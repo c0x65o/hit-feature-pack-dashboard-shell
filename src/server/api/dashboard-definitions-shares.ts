@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 function isAdmin(roles?: string[]) {
-  return roles?.includes('admin') || false;
+  return Array.isArray(roles) && roles.some((r) => String(r || '').toLowerCase() === 'admin');
 }
 
 async function loadDashboardByKey(db: ReturnType<typeof getDb>, key: string) {

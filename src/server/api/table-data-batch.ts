@@ -15,7 +15,8 @@ function requireAdmin(request: NextRequest) {
   const user = extractUserFromRequest(request);
   if (!user) return { ok: false as const, res: jsonError('Unauthorized', 401) };
   const roles = Array.isArray((user as any).roles) ? ((user as any).roles as string[]) : [];
-  if (!roles.includes('admin')) return { ok: false as const, res: jsonError('Forbidden', 403) };
+  const roleSet = new Set(roles.map((r) => String(r || '').toLowerCase()));
+  if (!roleSet.has('admin')) return { ok: false as const, res: jsonError('Forbidden', 403) };
   return { ok: true as const };
 }
 

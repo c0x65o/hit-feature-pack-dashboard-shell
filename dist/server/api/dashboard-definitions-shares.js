@@ -6,7 +6,7 @@ import { extractUserFromRequest } from '../auth';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 function isAdmin(roles) {
-    return roles?.includes('admin') || false;
+    return Array.isArray(roles) && roles.some((r) => String(r || '').toLowerCase() === 'admin');
 }
 async function loadDashboardByKey(db, key) {
     const res = await db.execute(sql `

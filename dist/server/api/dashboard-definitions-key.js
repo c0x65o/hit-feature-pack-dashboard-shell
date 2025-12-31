@@ -138,7 +138,7 @@ export async function PUT(request, { params }) {
             return NextResponse.json({ error: 'Missing key' }, { status: 400 });
         const db = getDb();
         const body = await request.json().catch(() => ({}));
-        const isAdmin = user.roles?.includes('admin') || false;
+        const isAdmin = Array.isArray(user.roles) && user.roles.some((r) => String(r || '').toLowerCase() === 'admin');
         const principals = await resolveUserPrincipals({ request, user });
         const userGroups = principals.groupIds || [];
         const userRoles = principals.roles || [];

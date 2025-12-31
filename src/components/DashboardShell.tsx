@@ -159,6 +159,7 @@ function filterNavByRoles(
   userRoles?: string[]
 ): NavItem[] {
   // Feature flags are now filtered at generation time, so we only need to filter by roles
+  const roleSet = new Set((userRoles || []).map((r) => String(r || '').toLowerCase()));
   return items
     .filter((item) => {
       // Check role-based access
@@ -167,7 +168,7 @@ function filterNavByRoles(
         if (!userRoles || userRoles.length === 0) {
           return false;
         }
-        const hasRequiredRole = item.roles.some(role => userRoles.includes(role));
+        const hasRequiredRole = item.roles.some((role) => roleSet.has(String(role || '').toLowerCase()));
         if (!hasRequiredRole) {
           return false;
         }
@@ -759,6 +760,92 @@ function ShellContent({
     }).catch(() => {});
   }, []);
 
+  const mapWorkflowTaskToNotification = useCallback((t: any): Notification => {
+    const taskId = String(t?.id ?? '');
+    const runId = String(t?.runId ?? t?.run_id ?? '');
+    const statusRaw = String(t?.status ?? 'open');
+    const status: 'open' | 'resolved' = statusRaw === 'open' ? 'open' : 'resolved';
+
+    const prompt = t?.prompt && typeof t.prompt === 'object' ? t.prompt : {};
+    const title =
+      typeof prompt?.title === 'string'
+        ? prompt.title
+        : t?.type === 'approval'
+          ? 'Approval required'
+          : 'Workflow task';
+    const message =
+      typeof prompt?.message === 'string'
+        ? prompt.message
+        : typeof prompt?.text === 'string'
+          ? prompt.text
+          : `A workflow is waiting for human action.`;
+
+    const decidedBy = t?.decidedByUserId || t?.decided_by_user_id || null;
+    const decision = t?.decision && typeof t.decision === 'object' ? t.decision : {};
+    const decisionSummary = typeof decision?.action === 'string' ? decision.action : null;
+
+    const base: Notification = {
+      id: `workflows:task:${taskId}`,
+      type: 'system',
+      title,
+      message,
+      timestamp: t?.createdAt || t?.created_at || new Date().toISOString(),
+      read: false,
+      priority: 'high',
+      status,
+      resolved:
+        status === 'resolved'
+          ? {
+              at: t?.decidedAt || t?.decided_at || undefined,
+              by: decidedBy ? String(decidedBy) : undefined,
+              summary: decisionSummary ? String(decisionSummary) : undefined,
+            }
+          : undefined,
+      meta: {
+        pack: 'workflows',
+        taskId,
+        runId,
+        workflowId: t?.workflowId || t?.workflow_id,
+        rawStatus: statusRaw,
+      },
+    };
+
+    if (status === 'open' && taskId && runId) {
+      base.actions = [
+        {
+          id: 'approve',
+          label: 'Approve',
+          variant: 'primary',
+          kind: 'api',
+          method: 'POST',
+          path: `/api/workflows/runs/${encodeURIComponent(runId)}/tasks/${encodeURIComponent(taskId)}/approve`,
+          confirm: {
+            title: 'Approve request?',
+            message: 'This will approve the workflow task.',
+            confirmText: 'Approve',
+            cancelText: 'Cancel',
+          },
+        },
+        {
+          id: 'deny',
+          label: 'Deny',
+          variant: 'danger',
+          kind: 'api',
+          method: 'POST',
+          path: `/api/workflows/runs/${encodeURIComponent(runId)}/tasks/${encodeURIComponent(taskId)}/deny`,
+          confirm: {
+            title: 'Deny request?',
+            message: 'This will deny the workflow task.',
+            confirmText: 'Deny',
+            cancelText: 'Cancel',
+          },
+        },
+      ];
+    }
+
+    return base;
+  }, []);
+
   const fetchWorkflowTaskNotifications = useCallback(async (): Promise<Notification[]> => {
     // Only attempt if the workflows feature pack is installed (or if the endpoint exists).
     const hasWorkflows = Boolean(hitConfig?.featurePacks?.workflows);
@@ -776,92 +863,10 @@ function ShellContent({
     }
     const json = await res.json().catch(() => ({}));
     const items = Array.isArray((json as any)?.items) ? (json as any).items : [];
-
-    const mapped: Notification[] = items.map((t: any) => {
-      const taskId = String(t?.id ?? '');
-      const runId = String(t?.runId ?? t?.run_id ?? '');
-      const statusRaw = String(t?.status ?? 'open');
-      const status: 'open' | 'resolved' = statusRaw === 'open' ? 'open' : 'resolved';
-
-      const prompt = t?.prompt && typeof t.prompt === 'object' ? t.prompt : {};
-      const title = typeof prompt?.title === 'string'
-        ? prompt.title
-        : t?.type === 'approval'
-          ? 'Approval required'
-          : 'Workflow task';
-      const message = typeof prompt?.message === 'string'
-        ? prompt.message
-        : typeof prompt?.text === 'string'
-          ? prompt.text
-          : `A workflow is waiting for human action.`;
-
-      const decidedBy = t?.decidedByUserId || t?.decided_by_user_id || null;
-      const decision = t?.decision && typeof t.decision === 'object' ? t.decision : {};
-      const decisionSummary = typeof decision?.action === 'string' ? decision.action : null;
-
-      const base: Notification = {
-        id: `workflows:task:${taskId}`,
-        type: 'system',
-        title,
-        message,
-        timestamp: t?.createdAt || t?.created_at || new Date().toISOString(),
-        read: false,
-        priority: 'high',
-        status,
-        resolved: status === 'resolved'
-          ? {
-              at: t?.decidedAt || t?.decided_at || undefined,
-              by: decidedBy ? String(decidedBy) : undefined,
-              summary: decisionSummary ? String(decisionSummary) : undefined,
-            }
-          : undefined,
-        meta: {
-          pack: 'workflows',
-          taskId,
-          runId,
-          workflowId: t?.workflowId || t?.workflow_id,
-          rawStatus: statusRaw,
-        },
-      };
-
-      if (status === 'open' && taskId && runId) {
-        base.actions = [
-          {
-            id: 'approve',
-            label: 'Approve',
-            variant: 'primary',
-            kind: 'api',
-            method: 'POST',
-            path: `/api/workflows/runs/${encodeURIComponent(runId)}/tasks/${encodeURIComponent(taskId)}/approve`,
-            confirm: {
-              title: 'Approve request?',
-              message: 'This will approve the workflow task.',
-              confirmText: 'Approve',
-              cancelText: 'Cancel',
-            },
-          },
-          {
-            id: 'deny',
-            label: 'Deny',
-            variant: 'danger',
-            kind: 'api',
-            method: 'POST',
-            path: `/api/workflows/runs/${encodeURIComponent(runId)}/tasks/${encodeURIComponent(taskId)}/deny`,
-            confirm: {
-              title: 'Deny request?',
-              message: 'This will deny the workflow task.',
-              confirmText: 'Deny',
-              cancelText: 'Cancel',
-            },
-          },
-        ];
-      }
-
-      return base;
-    });
+    const mapped: Notification[] = items.map((t: any) => mapWorkflowTaskToNotification(t));
 
     return mapped;
-  }, [hitConfig?.featurePacks?.workflows]);
+  }, [hitConfig?.featurePacks?.workflows, mapWorkflowTaskToNotification]);
 
   const fetchConfiguredProviderNotifications = useCallback(async (): Promise<Notification[]> => {
     const token = getStoredToken();
@@ -965,7 +970,11 @@ function ShellContent({
     upsertReadIds,
   ]);
 
-  // Real-time: subscribe to events gateway and refresh the inbox on relevant events.
+  function safeKey(id: string): string {
+    return encodeURIComponent(String(id || '').trim()).replace(/%/g, '_');
+  }
+
+  // Real-time: subscribe to events gateway and update workflow notifications instantly.
   useEffect(() => {
     if (!mounted) return;
     let unsubscribers: Array<() => void> = [];
@@ -976,8 +985,20 @@ function ShellContent({
       (hitConfig?.dashboardShell as any)?.notificationRealtimePatterns ||
       (hitConfig?.dashboardShell as any)?.notification_realtime_patterns ||
       [];
+    const rolePatterns =
+      hasWorkflows && Array.isArray(currentUser?.roles)
+        ? currentUser!.roles!.map((r) => `workflows.inbox.role.${safeKey(String(r || '').toLowerCase())}.*`)
+        : [];
+    const userPatterns =
+      hasWorkflows && (currentUser?.id || currentUser?.email)
+        ? [
+            ...(currentUser?.id ? [`workflows.inbox.user.${safeKey(String(currentUser.id))}.*`] : []),
+            ...(currentUser?.email ? [`workflows.inbox.user.${safeKey(String(currentUser.email))}.*`] : []),
+          ]
+        : [];
+
     const patterns: string[] = [
-      ...(hasWorkflows ? ['workflows.task.*'] : []),
+      ...(hasWorkflows ? [...rolePatterns, ...userPatterns] : []),
       ...(Array.isArray(patternsFromConfig) ? patternsFromConfig.map((p: any) => String(p || '').trim()).filter(Boolean) : []),
     ];
 
@@ -991,20 +1012,32 @@ function ShellContent({
         const eventsClient = (sdk as any)?.events;
         if (!eventsClient?.subscribe) return;
 
-        const scheduleRefresh = (() => {
-          let t: any = null;
-          return () => {
-            if (t) return;
-            t = setTimeout(() => {
-              t = null;
-              if (cancelled) return;
-              refreshNotifications().catch(() => {});
-            }, 250);
-          };
-        })();
-
         unsubscribers = uniqPatterns.map((pattern) => {
-          const sub = eventsClient.subscribe(pattern, () => scheduleRefresh());
+          const sub = eventsClient.subscribe(pattern, (evt: any) => {
+            if (cancelled) return;
+            // For workflow inbox pushes, the payload is { task: {...} }.
+            const eventType = evt?.event_type || evt?.eventType || '';
+            if (typeof eventType === 'string' && eventType.startsWith('workflows.inbox.')) {
+              const task = evt?.payload?.task || evt?.payload || null;
+              if (task && typeof task === 'object') {
+                // Reuse the same mapping as the pull-based path.
+                try {
+                  const n = mapWorkflowTaskToNotification(task);
+
+                  setNotifications((prev) => {
+                    const next = [n, ...prev.filter((x) => String(x.id) !== String(n.id))];
+                    // Enrich with read state
+                    return next.map((x) => ({ ...x, read: readNotificationIds.has(String(x.id)) }));
+                  });
+                } catch {
+                  refreshNotifications().catch(() => {});
+                }
+                return;
+              }
+            }
+            // Non-workflow realtime patterns continue to use refresh fallback.
+            refreshNotifications().catch(() => {});
+          });
           return () => sub?.unsubscribe?.();
         });
       } catch {
@@ -1019,7 +1052,7 @@ function ShellContent({
       }
       unsubscribers = [];
     };
-  }, [hitConfig, mounted, refreshNotifications]);
+  }, [hitConfig, mounted, refreshNotifications, currentUser?.roles, currentUser?.id, currentUser?.email, readNotificationIds, mapWorkflowTaskToNotification]);
 
   // Fetch whenever the dropdown opens (and once on mount).
   useEffect(() => {
@@ -2213,7 +2246,8 @@ function ShellContent({
                 {profileFieldMetadata
                   .sort((a, b) => a.display_order - b.display_order)
                   .map((fieldMeta) => {
-                    const isAdmin = currentUser?.roles?.includes('admin') || false;
+                    const isAdmin =
+                      (currentUser?.roles || []).map((r) => String(r || '').toLowerCase()).includes('admin');
                     const canEdit = isAdmin || fieldMeta.user_can_edit;
                     // Email comes from currentUser.email, other fields from profileFields
                     const fieldValue = fieldMeta.field_key === 'email' 

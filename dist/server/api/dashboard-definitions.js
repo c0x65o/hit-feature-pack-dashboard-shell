@@ -211,7 +211,7 @@ export async function POST(request) {
             if (!source)
                 return NextResponse.json({ error: 'sourceKey not found' }, { status: 404 });
             // If source is private, only owner can copy (or admin).
-            const isAdmin = user.roles?.includes('admin') || false;
+            const isAdmin = Array.isArray(user.roles) && user.roles.some((r) => String(r || '').toLowerCase() === 'admin');
             const canRead = source.visibility === 'public' || source.ownerUserId === user.sub || isAdmin;
             if (!canRead)
                 return NextResponse.json({ error: 'Access denied' }, { status: 403 });

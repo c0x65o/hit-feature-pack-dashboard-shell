@@ -145,7 +145,8 @@ export async function PUT(request: NextRequest, { params }: { params: { key: str
 
     const db = getDb();
     const body = await request.json().catch(() => ({}));
-    const isAdmin = (user.roles as string[])?.includes('admin') || false;
+    const isAdmin =
+      Array.isArray(user.roles) && (user.roles as string[]).some((r) => String(r || '').toLowerCase() === 'admin');
 
     const principals = await resolveUserPrincipals({ request, user });
     const userGroups = principals.groupIds || [];

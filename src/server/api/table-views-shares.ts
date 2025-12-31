@@ -12,7 +12,7 @@ export const runtime = 'nodejs';
  * Check if user has admin role
  */
 function isAdmin(roles?: string[]): boolean {
-  return roles?.includes('admin') || false;
+  return Array.isArray(roles) && roles.some((r) => String(r || '').toLowerCase() === 'admin');
 }
 
 /**
