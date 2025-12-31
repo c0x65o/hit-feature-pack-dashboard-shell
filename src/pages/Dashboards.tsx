@@ -242,9 +242,11 @@ function pickEntityKindForMetric(item?: MetricCatalogItem | null): string | unde
 function Donut({
   slices,
   format,
+  onSliceClick,
 }: {
-  slices: Array<{ label: string; value: number; color: string }>;
+  slices: Array<{ label: string; value: number; color: string; raw?: unknown }>;
   format: 'number' | 'usd';
+  onSliceClick?: (slice: { label: string; value: number; color: string; raw?: unknown }) => void;
 }) {
   const { colors, radius, shadows } = useThemeTokens();
   const total = slices.reduce((a, s) => a + (Number.isFinite(s.value) ? s.value : 0), 0) || 1;
@@ -306,11 +308,12 @@ function Donut({
               stroke={isHot ? colors.border.strong : 'transparent'}
               strokeWidth={isHot ? 2 : 0}
               style={{
-                cursor: 'default',
+                cursor: onSliceClick ? 'pointer' : 'default',
                 filter: isHot ? 'drop-shadow(0 10px 18px rgba(0,0,0,0.16))' : 'none',
               }}
               onMouseEnter={() => setHovered({ label: p.label, value: p.value, color: p.color, pct })}
               onMouseLeave={() => setHovered(null)}
+              onClick={() => onSliceClick?.(p)}
             />
           );
         })}
@@ -333,9 +336,11 @@ function Donut({
                 padding: '6px 8px',
                 borderRadius: radius.md,
                 background: isHot ? colors.bg.muted : 'transparent',
+                cursor: onSliceClick ? 'pointer' : 'default',
               }}
               onMouseEnter={() => setHovered({ label: s.label, value: s.value, color: s.color, pct })}
               onMouseLeave={() => setHovered(null)}
+              onClick={() => onSliceClick?.(s)}
             >
               <span className="legend-dot" style={{ backgroundColor: s.color }} />
               <span className="legend-label">{s.label}</span>
@@ -721,6 +726,55 @@ export function Dashboards() {
   const [projectNames, setProjectNames] = React.useState<Record<string, string>>({});
   const [timelineEvents, setTimelineEvents] = React.useState<TimelineEvent[]>([]);
   const [timelineLoading, setTimelineLoading] = React.useState(false);
+
+  // Pie drilldown (slice -> underlying points)
+  const [drillOpen, setDrillOpen] = React.useState(false);
+  const [drillLoading, setDrillLoading] = React.useState(false);
+  const [drillError, setDrillError] = React.useState<string | null>(null);
+  const [drillTitle, setDrillTitle] = React.useState<string>('Drilldown');
+  const [drillReportTz, setDrillReportTz] = React.useState<string>('UTC');
+  const [drillFormat, setDrillFormat] = React.useState<'number' | 'usd'>('number');
+  const [drillPoints, setDrillPoints] = React.useState<any[]>([]);
+  const [drillPagination, setDrillPagination] = React.useState<{ page: number; pageSize: number; total: number }>({
+    page: 1,
+    pageSize: 50,
+    total: 0,
+  });
+  const [drillLastFilter, setDrillLastFilter] = React.useState<any | null>(null);
+
+  const runDrilldown = React.useCallback(async (args: { pointFilter: any; title: string; format: 'number' | 'usd'; page?: number }) => {
+    const page = typeof args.page === 'number' ? args.page : 1;
+    setDrillOpen(true);
+    setDrillTitle(args.title || 'Drilldown');
+    setDrillFormat(args.format);
+    setDrillError(null);
+    setDrillLoading(true);
+    setDrillLastFilter(args.pointFilter);
+    try {
+      const res = await fetch('/api/metrics/drilldown', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pointFilter: args.pointFilter, page, pageSize: 50, includeContributors: false }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || `metrics/drilldown ${res.status}`);
+      setDrillPoints(Array.isArray(json?.points) ? json.points : []);
+      const p = json?.pagination;
+      setDrillPagination({
+        page: typeof p?.page === 'number' ? p.page : page,
+        pageSize: typeof p?.pageSize === 'number' ? p.pageSize : 50,
+        total: typeof p?.total === 'number' ? p.total : 0,
+      });
+      const tz = String(json?.meta?.reportTimezone || 'UTC');
+      setDrillReportTz(tz || 'UTC');
+    } catch (e) {
+      setDrillError(e instanceof Error ? e.message : String(e));
+      setDrillPoints([]);
+      setDrillPagination({ page, pageSize: 50, total: 0 });
+    } finally {
+      setDrillLoading(false);
+    }
+  }, []);
 
   const urlParams = React.useMemo(() => {
     if (typeof window === 'undefined') return new URLSearchParams();
@@ -1821,19 +1875,57 @@ export function Dashboards() {
                 const topN = Number(w?.presentation?.topN || 5);
                 const otherLabel = String(w?.presentation?.otherLabel || 'Other');
                 const normalized = rows
-                  .map((r: any) => ({ label: String(r[groupByKey] ?? 'Unknown'), value: Number(r.value ?? 0) }))
+                  .map((r: any) => ({
+                    label: String(r && (groupByKey in r) ? (r[groupByKey] ?? 'Unknown') : 'Unknown'),
+                    raw: r && (groupByKey in r) ? (r[groupByKey] ?? null) : null,
+                    value: Number(r.value ?? 0),
+                  }))
                   .sort((a: any, b: any) => b.value - a.value);
                 const top = normalized.slice(0, topN);
                 const otherSum = normalized.slice(topN).reduce((acc: number, r: any) => acc + (Number.isFinite(r.value) ? r.value : 0), 0);
                 const slices = [
                   ...top.map((r: any, idx: number) => ({ ...r, color: palette(idx) })),
-                  ...(otherSum > 0 ? [{ label: otherLabel, value: otherSum, color: '#94a3b8' }] : []),
+                  ...(otherSum > 0 ? [{ label: otherLabel, raw: '__other__', value: otherSum, color: '#94a3b8' }] : []),
                 ];
+
+                const onSliceClick = async (slice: any) => {
+                  const t = effectiveTime(w);
+                  const q = { ...(w.query || {}) } as any;
+                  const metricKey = String(q.metricKey || '').trim();
+                  if (!metricKey) return;
+
+                  // "Other" is a rollup of many dimension values; drilldown needs a NOT-IN filter,
+                  // which we don't support yet. Keep it non-clickable for now.
+                  if (slice?.raw === '__other__') return;
+
+                  const dims = (q.dimensions && typeof q.dimensions === 'object') ? { ...(q.dimensions as any) } : {};
+                  dims[groupByKey] = slice?.raw ?? null;
+
+                  const pointFilter: any = { metricKey, dimensions: dims };
+                  if (typeof q.entityKind === 'string' && q.entityKind.trim()) pointFilter.entityKind = q.entityKind.trim();
+                  if (typeof q.entityId === 'string' && q.entityId.trim()) pointFilter.entityId = q.entityId.trim();
+                  if (Array.isArray(q.entityIds) && q.entityIds.length) pointFilter.entityIds = q.entityIds.map((x: any) => String(x || '').trim()).filter(Boolean);
+                  if (typeof q.dataSourceId === 'string' && q.dataSourceId.trim()) pointFilter.dataSourceId = q.dataSourceId.trim();
+                  if (typeof q.sourceGranularity === 'string' && q.sourceGranularity.trim()) pointFilter.sourceGranularity = q.sourceGranularity.trim();
+                  if (t) {
+                    pointFilter.start = t.start;
+                    pointFilter.end = t.end;
+                  }
+
+                  const title = `${w.title || 'Pie'} • ${String(slice?.label || '')}`;
+                  await runDrilldown({ pointFilter, title, format: fmt as any, page: 1 });
+                };
+
                 return (
                   <div key={w.key} className={spanClass}>
                     <Card title={w.title || 'Pie'}>
                       <div style={{ padding: 14 }}>
-                        {st?.loading ? <Spinner /> : <Donut slices={slices} format={fmt as any} />}
+                        {st?.loading ? <Spinner /> : <Donut slices={slices as any} format={fmt as any} onSliceClick={onSliceClick} />}
+                        {!st?.loading && slices.some((s: any) => s?.raw === '__other__') ? (
+                          <div style={{ marginTop: 10, fontSize: 12, color: colors.text.muted }}>
+                            Tip: “{otherLabel}” is an aggregate bucket; drilldown is available on named slices only (for now).
+                          </div>
+                        ) : null}
                       </div>
                     </Card>
                   </div>
@@ -1935,6 +2027,77 @@ export function Dashboards() {
                 }}
                 onUpdate={async () => { /* no-op (READ-only) */ }}
               />
+            )}
+          </div>
+        </Modal>
+
+        <Modal
+          open={drillOpen}
+          onClose={() => setDrillOpen(false)}
+          title={drillTitle}
+          description={`Underlying points (report tz: ${drillReportTz})`}
+        >
+          <div style={{ padding: 12 }}>
+            {drillError ? <div style={{ color: '#ef4444', fontSize: 13, marginBottom: 10 }}>{drillError}</div> : null}
+            {drillLoading ? <Spinner /> : (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
+                  <div style={{ fontSize: 12, color: colors.text.muted }}>
+                    {drillPagination.total.toLocaleString()} points
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <Button
+                      variant="secondary"
+                      disabled={drillLoading || drillPagination.page <= 1 || !drillLastFilter}
+                      onClick={() => drillLastFilter && runDrilldown({ pointFilter: drillLastFilter, title: drillTitle, format: drillFormat, page: drillPagination.page - 1 })}
+                    >
+                      Prev
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      disabled={drillLoading || !drillLastFilter || (drillPagination.page * drillPagination.pageSize) >= drillPagination.total}
+                      onClick={() => drillLastFilter && runDrilldown({ pointFilter: drillLastFilter, title: drillTitle, format: drillFormat, page: drillPagination.page + 1 })}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+
+                <div style={{ overflowX: 'auto', border: `1px solid ${colors.border.subtle}`, borderRadius: 10 }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ textAlign: 'left', background: colors.bg.muted }}>
+                        <th style={{ padding: '8px 10px' }}>Date</th>
+                        <th style={{ padding: '8px 10px' }}>Value</th>
+                        <th style={{ padding: '8px 10px' }}>Entity</th>
+                        <th style={{ padding: '8px 10px' }}>Data Source</th>
+                        <th style={{ padding: '8px 10px' }}>Dimensions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {drillPoints.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} style={{ padding: 12, color: colors.text.muted }}>No points found.</td>
+                        </tr>
+                      ) : drillPoints.map((p: any) => (
+                        <tr key={String(p.id)} style={{ borderTop: `1px solid ${colors.border.subtle}` }}>
+                          <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>{String(p.date || '')}</td>
+                          <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>{formatNumber(Number(p.value ?? 0), drillFormat as any)}</td>
+                          <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
+                            <span style={{ color: colors.text.muted }}>{String(p.entityKind || '')}</span>
+                            <span>:</span>
+                            <span style={{ marginLeft: 6 }}>{String(p.entityId || '')}</span>
+                          </td>
+                          <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>{String(p.dataSourceId || '')}</td>
+                          <td style={{ padding: '8px 10px' }}>
+                            <code style={{ fontSize: 11 }}>{JSON.stringify(p.dimensions || {})}</code>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </div>
         </Modal>

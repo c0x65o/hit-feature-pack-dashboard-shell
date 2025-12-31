@@ -171,7 +171,7 @@ function pickEntityKindForMetric(item) {
         return 'project';
     return kinds[0];
 }
-function Donut({ slices, format, }) {
+function Donut({ slices, format, onSliceClick, }) {
     const { colors, radius, shadows } = useThemeTokens();
     const total = slices.reduce((a, s) => a + (Number.isFinite(s.value) ? s.value : 0), 0) || 1;
     const cx = 120;
@@ -214,9 +214,9 @@ function Donut({ slices, format, }) {
                         const isHot = hovered?.label === p.label;
                         const pct = (Number.isFinite(p.value) ? p.value : 0) / total * 100;
                         return (_jsx("path", { d: p.d, fill: p.color, fillOpacity: isHot ? 1 : 0.92, stroke: isHot ? colors.border.strong : 'transparent', strokeWidth: isHot ? 2 : 0, style: {
-                                cursor: 'default',
+                                cursor: onSliceClick ? 'pointer' : 'default',
                                 filter: isHot ? 'drop-shadow(0 10px 18px rgba(0,0,0,0.16))' : 'none',
-                            }, onMouseEnter: () => setHovered({ label: p.label, value: p.value, color: p.color, pct }), onMouseLeave: () => setHovered(null) }, p.label));
+                            }, onMouseEnter: () => setHovered({ label: p.label, value: p.value, color: p.color, pct }), onMouseLeave: () => setHovered(null), onClick: () => onSliceClick?.(p) }, p.label));
                     }), _jsx("text", { x: "120", y: "118", textAnchor: "middle", fontSize: "12", fill: "currentColor", fillOpacity: 0.55, children: "Total" }), _jsx("text", { x: "120", y: "146", textAnchor: "middle", fontSize: "20", fontWeight: "800", fill: "currentColor", children: formatNumber(total, format) })] }), _jsx("div", { className: "donut-legend", children: slices.map((s) => {
                     const isHot = hovered?.label === s.label;
                     const pct = (Number.isFinite(s.value) ? s.value : 0) / total * 100;
@@ -224,7 +224,8 @@ function Donut({ slices, format, }) {
                             padding: '6px 8px',
                             borderRadius: radius.md,
                             background: isHot ? colors.bg.muted : 'transparent',
-                        }, onMouseEnter: () => setHovered({ label: s.label, value: s.value, color: s.color, pct }), onMouseLeave: () => setHovered(null), children: [_jsx("span", { className: "legend-dot", style: { backgroundColor: s.color } }), _jsx("span", { className: "legend-label", children: s.label }), _jsx("span", { className: "legend-value", children: formatNumber(s.value, format) })] }, s.label));
+                            cursor: onSliceClick ? 'pointer' : 'default',
+                        }, onMouseEnter: () => setHovered({ label: s.label, value: s.value, color: s.color, pct }), onMouseLeave: () => setHovered(null), onClick: () => onSliceClick?.(s), children: [_jsx("span", { className: "legend-dot", style: { backgroundColor: s.color } }), _jsx("span", { className: "legend-label", children: s.label }), _jsx("span", { className: "legend-value", children: formatNumber(s.value, format) })] }, s.label));
                 }) }), hovered && mouse ? (_jsxs("div", { style: {
                     position: 'absolute',
                     left: Math.max(14, Math.min(mouse.x, 520)),
@@ -417,6 +418,56 @@ export function Dashboards() {
     const [projectNames, setProjectNames] = React.useState({});
     const [timelineEvents, setTimelineEvents] = React.useState([]);
     const [timelineLoading, setTimelineLoading] = React.useState(false);
+    // Pie drilldown (slice -> underlying points)
+    const [drillOpen, setDrillOpen] = React.useState(false);
+    const [drillLoading, setDrillLoading] = React.useState(false);
+    const [drillError, setDrillError] = React.useState(null);
+    const [drillTitle, setDrillTitle] = React.useState('Drilldown');
+    const [drillReportTz, setDrillReportTz] = React.useState('UTC');
+    const [drillFormat, setDrillFormat] = React.useState('number');
+    const [drillPoints, setDrillPoints] = React.useState([]);
+    const [drillPagination, setDrillPagination] = React.useState({
+        page: 1,
+        pageSize: 50,
+        total: 0,
+    });
+    const [drillLastFilter, setDrillLastFilter] = React.useState(null);
+    const runDrilldown = React.useCallback(async (args) => {
+        const page = typeof args.page === 'number' ? args.page : 1;
+        setDrillOpen(true);
+        setDrillTitle(args.title || 'Drilldown');
+        setDrillFormat(args.format);
+        setDrillError(null);
+        setDrillLoading(true);
+        setDrillLastFilter(args.pointFilter);
+        try {
+            const res = await fetch('/api/metrics/drilldown', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pointFilter: args.pointFilter, page, pageSize: 50, includeContributors: false }),
+            });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok)
+                throw new Error(json?.error || `metrics/drilldown ${res.status}`);
+            setDrillPoints(Array.isArray(json?.points) ? json.points : []);
+            const p = json?.pagination;
+            setDrillPagination({
+                page: typeof p?.page === 'number' ? p.page : page,
+                pageSize: typeof p?.pageSize === 'number' ? p.pageSize : 50,
+                total: typeof p?.total === 'number' ? p.total : 0,
+            });
+            const tz = String(json?.meta?.reportTimezone || 'UTC');
+            setDrillReportTz(tz || 'UTC');
+        }
+        catch (e) {
+            setDrillError(e instanceof Error ? e.message : String(e));
+            setDrillPoints([]);
+            setDrillPagination({ page, pageSize: 50, total: 0 });
+        }
+        finally {
+            setDrillLoading(false);
+        }
+    }, []);
     const urlParams = React.useMemo(() => {
         if (typeof window === 'undefined')
             return new URLSearchParams();
@@ -1348,15 +1399,49 @@ export function Dashboards() {
                                     const topN = Number(w?.presentation?.topN || 5);
                                     const otherLabel = String(w?.presentation?.otherLabel || 'Other');
                                     const normalized = rows
-                                        .map((r) => ({ label: String(r[groupByKey] ?? 'Unknown'), value: Number(r.value ?? 0) }))
+                                        .map((r) => ({
+                                        label: String(r && (groupByKey in r) ? (r[groupByKey] ?? 'Unknown') : 'Unknown'),
+                                        raw: r && (groupByKey in r) ? (r[groupByKey] ?? null) : null,
+                                        value: Number(r.value ?? 0),
+                                    }))
                                         .sort((a, b) => b.value - a.value);
                                     const top = normalized.slice(0, topN);
                                     const otherSum = normalized.slice(topN).reduce((acc, r) => acc + (Number.isFinite(r.value) ? r.value : 0), 0);
                                     const slices = [
                                         ...top.map((r, idx) => ({ ...r, color: palette(idx) })),
-                                        ...(otherSum > 0 ? [{ label: otherLabel, value: otherSum, color: '#94a3b8' }] : []),
+                                        ...(otherSum > 0 ? [{ label: otherLabel, raw: '__other__', value: otherSum, color: '#94a3b8' }] : []),
                                     ];
-                                    return (_jsx("div", { className: spanClass, children: _jsx(Card, { title: w.title || 'Pie', children: _jsx("div", { style: { padding: 14 }, children: st?.loading ? _jsx(Spinner, {}) : _jsx(Donut, { slices: slices, format: fmt }) }) }) }, w.key));
+                                    const onSliceClick = async (slice) => {
+                                        const t = effectiveTime(w);
+                                        const q = { ...(w.query || {}) };
+                                        const metricKey = String(q.metricKey || '').trim();
+                                        if (!metricKey)
+                                            return;
+                                        // "Other" is a rollup of many dimension values; drilldown needs a NOT-IN filter,
+                                        // which we don't support yet. Keep it non-clickable for now.
+                                        if (slice?.raw === '__other__')
+                                            return;
+                                        const dims = (q.dimensions && typeof q.dimensions === 'object') ? { ...q.dimensions } : {};
+                                        dims[groupByKey] = slice?.raw ?? null;
+                                        const pointFilter = { metricKey, dimensions: dims };
+                                        if (typeof q.entityKind === 'string' && q.entityKind.trim())
+                                            pointFilter.entityKind = q.entityKind.trim();
+                                        if (typeof q.entityId === 'string' && q.entityId.trim())
+                                            pointFilter.entityId = q.entityId.trim();
+                                        if (Array.isArray(q.entityIds) && q.entityIds.length)
+                                            pointFilter.entityIds = q.entityIds.map((x) => String(x || '').trim()).filter(Boolean);
+                                        if (typeof q.dataSourceId === 'string' && q.dataSourceId.trim())
+                                            pointFilter.dataSourceId = q.dataSourceId.trim();
+                                        if (typeof q.sourceGranularity === 'string' && q.sourceGranularity.trim())
+                                            pointFilter.sourceGranularity = q.sourceGranularity.trim();
+                                        if (t) {
+                                            pointFilter.start = t.start;
+                                            pointFilter.end = t.end;
+                                        }
+                                        const title = `${w.title || 'Pie'} • ${String(slice?.label || '')}`;
+                                        await runDrilldown({ pointFilter, title, format: fmt, page: 1 });
+                                    };
+                                    return (_jsx("div", { className: spanClass, children: _jsx(Card, { title: w.title || 'Pie', children: _jsxs("div", { style: { padding: 14 }, children: [st?.loading ? _jsx(Spinner, {}) : _jsx(Donut, { slices: slices, format: fmt, onSliceClick: onSliceClick }), !st?.loading && slices.some((s) => s?.raw === '__other__') ? (_jsxs("div", { style: { marginTop: 10, fontSize: 12, color: colors.text.muted }, children: ["Tip: \u201C", otherLabel, "\u201D is an aggregate bucket; drilldown is available on named slices only (for now)."] })) : null] }) }) }, w.key));
                                 }
                                 if (w.kind === 'line') {
                                     const st = lineSeries[w.key];
@@ -1401,6 +1486,6 @@ export function Dashboards() {
                                         if (!res.ok)
                                             throw new Error(json?.error || `Failed (${res.status})`);
                                         setShares((prev) => prev.filter((s) => !(s.principalType === entry.principalType && s.principalId === entry.principalId)));
-                                    }, onUpdate: async () => { } }))] }) })] })] }));
+                                    }, onUpdate: async () => { } }))] }) }), _jsx(Modal, { open: drillOpen, onClose: () => setDrillOpen(false), title: drillTitle, description: `Underlying points (report tz: ${drillReportTz})`, children: _jsxs("div", { style: { padding: 12 }, children: [drillError ? _jsx("div", { style: { color: '#ef4444', fontSize: 13, marginBottom: 10 }, children: drillError }) : null, drillLoading ? _jsx(Spinner, {}) : (_jsxs(_Fragment, { children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }, children: [_jsxs("div", { style: { fontSize: 12, color: colors.text.muted }, children: [drillPagination.total.toLocaleString(), " points"] }), _jsxs("div", { style: { display: 'flex', gap: 8 }, children: [_jsx(Button, { variant: "secondary", disabled: drillLoading || drillPagination.page <= 1 || !drillLastFilter, onClick: () => drillLastFilter && runDrilldown({ pointFilter: drillLastFilter, title: drillTitle, format: drillFormat, page: drillPagination.page - 1 }), children: "Prev" }), _jsx(Button, { variant: "secondary", disabled: drillLoading || !drillLastFilter || (drillPagination.page * drillPagination.pageSize) >= drillPagination.total, onClick: () => drillLastFilter && runDrilldown({ pointFilter: drillLastFilter, title: drillTitle, format: drillFormat, page: drillPagination.page + 1 }), children: "Next" })] })] }), _jsx("div", { style: { overflowX: 'auto', border: `1px solid ${colors.border.subtle}`, borderRadius: 10 }, children: _jsxs("table", { style: { width: '100%', borderCollapse: 'collapse', fontSize: 12 }, children: [_jsx("thead", { children: _jsxs("tr", { style: { textAlign: 'left', background: colors.bg.muted }, children: [_jsx("th", { style: { padding: '8px 10px' }, children: "Date" }), _jsx("th", { style: { padding: '8px 10px' }, children: "Value" }), _jsx("th", { style: { padding: '8px 10px' }, children: "Entity" }), _jsx("th", { style: { padding: '8px 10px' }, children: "Data Source" }), _jsx("th", { style: { padding: '8px 10px' }, children: "Dimensions" })] }) }), _jsx("tbody", { children: drillPoints.length === 0 ? (_jsx("tr", { children: _jsx("td", { colSpan: 5, style: { padding: 12, color: colors.text.muted }, children: "No points found." }) })) : drillPoints.map((p) => (_jsxs("tr", { style: { borderTop: `1px solid ${colors.border.subtle}` }, children: [_jsx("td", { style: { padding: '8px 10px', whiteSpace: 'nowrap' }, children: String(p.date || '') }), _jsx("td", { style: { padding: '8px 10px', whiteSpace: 'nowrap' }, children: formatNumber(Number(p.value ?? 0), drillFormat) }), _jsxs("td", { style: { padding: '8px 10px', whiteSpace: 'nowrap' }, children: [_jsx("span", { style: { color: colors.text.muted }, children: String(p.entityKind || '') }), _jsx("span", { children: ":" }), _jsx("span", { style: { marginLeft: 6 }, children: String(p.entityId || '') })] }), _jsx("td", { style: { padding: '8px 10px', whiteSpace: 'nowrap' }, children: String(p.dataSourceId || '') }), _jsx("td", { style: { padding: '8px 10px' }, children: _jsx("code", { style: { fontSize: 11 }, children: JSON.stringify(p.dimensions || {}) }) })] }, String(p.id)))) })] }) })] }))] }) })] })] }));
 }
 export default Dashboards;
