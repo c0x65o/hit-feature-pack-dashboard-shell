@@ -104,6 +104,8 @@ type DashboardListItem = {
   name: string;
   description: string | null;
   scope: any;
+  /** Convenience: extracted from scope when kind=pack */
+  pack?: string | null;
   visibility: string;
   isSystem: boolean;
   ownerUserId: string;
@@ -804,6 +806,8 @@ export function Dashboards(_props: DashboardsProps = {}) {
     return new URLSearchParams(window.location.search);
   }, []);
   const pack = React.useMemo(() => (typeof window === 'undefined' ? '' : (new URLSearchParams(window.location.search).get('pack') || '').trim()), []);
+  const defaultPacks = React.useMemo(() => ['crm', 'projects', 'marketing'], []);
+  const isDefaultPackMode = !pack;
 
   const range = React.useMemo(() => {
     if (preset === 'custom') {
@@ -891,12 +895,45 @@ export function Dashboards(_props: DashboardsProps = {}) {
     try {
       setLoadingList(true);
       setError(null);
-      // When pack-scoped, default to pack dashboards only (no global) for MVP.
-      const u = pack ? `/api/dashboard-definitions?pack=${encodeURIComponent(pack)}&includeGlobal=false` : '/api/dashboard-definitions';
-      const res = await fetch(u);
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error || `Failed (${res.status})`);
-      const items = Array.isArray(json.data) ? (json.data as DashboardListItem[]) : [];
+      // Default UX: show business pack dashboards (CRM/Projects/Marketing) instead of global.
+      // When explicitly pack-scoped, show only that pack (no global) for MVP.
+      const normalizeItems = (items: any[]): DashboardListItem[] => {
+        const xs = Array.isArray(items) ? items : [];
+        return xs.map((d: any) => {
+          const scope = d?.scope;
+          const packFromScope =
+            scope && typeof scope === 'object' && String(scope.kind || '') === 'pack'
+              ? String(scope.pack || '').trim() || null
+              : null;
+          return { ...(d as any), pack: packFromScope } as DashboardListItem;
+        });
+      };
+
+      let items: DashboardListItem[] = [];
+      if (pack) {
+        const u = `/api/dashboard-definitions?pack=${encodeURIComponent(pack)}&includeGlobal=false`;
+        const res = await fetch(u);
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.error || `Failed (${res.status})`);
+        items = normalizeItems(Array.isArray(json.data) ? json.data : []);
+      } else {
+        // Fetch dashboards for the default packs in parallel.
+        const results = await Promise.all(
+          defaultPacks.map(async (p) => {
+            const u = `/api/dashboard-definitions?pack=${encodeURIComponent(p)}&includeGlobal=false`;
+            const res = await fetch(u);
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(json?.error || `Failed (${res.status})`);
+            const xs = normalizeItems(Array.isArray(json.data) ? json.data : []);
+            // Ensure pack is set even if scope parsing fails.
+            return xs.map((d) => ({ ...d, pack: d.pack || p }));
+          })
+        );
+        items = results.flat();
+        // Stable sort: pack then dashboard name.
+        items.sort((a, b) => (String(a.pack || '').localeCompare(String(b.pack || ''))) || a.name.localeCompare(b.name));
+      }
+
       setList(items);
 
       const fromUrl = (typeof window !== 'undefined') ? (new URLSearchParams(window.location.search).get('key') || '').trim() : '';
@@ -909,7 +946,7 @@ export function Dashboards(_props: DashboardsProps = {}) {
     } finally {
       setLoadingList(false);
     }
-  }, [pack]);
+  }, [pack, defaultPacks]);
 
   const loadDefinition = React.useCallback(async (key: string) => {
     if (!key) return;
@@ -1632,7 +1669,14 @@ export function Dashboards(_props: DashboardsProps = {}) {
       <div className="wrap">
         {!loadingList && list.length === 0 ? (
           <div className="span-12">
-            <Card title="No dashboards yet" description={pack ? `No dashboards exist for pack "${pack}" yet.` : 'No dashboards exist yet.'}>
+            <Card
+              title="No dashboards yet"
+              description={
+                pack
+                  ? `No dashboards exist for pack "${pack}" yet.`
+                  : `No dashboards exist yet for default packs (${defaultPacks.join(', ')}).`
+              }
+            >
               <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div style={{ fontSize: 13, color: colors.text.muted }}>
                   Create dashboard is coming soon. In the meantime, press <strong>Ctrl+K</strong> (or <strong>⌘K</strong>) to open the AI assistant and tell it what you want your dashboard to look like.
@@ -1663,7 +1707,11 @@ export function Dashboards(_props: DashboardsProps = {}) {
           <div style={{ minWidth: 260 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <strong>{definition?.name || 'Dashboard'}</strong>
-              {pack ? <Badge variant="info">pack: {pack}</Badge> : <Badge variant="info">global</Badge>}
+              {pack ? (
+                <Badge variant="info">pack: {pack}</Badge>
+              ) : (
+                <Badge variant="info">packs: {defaultPacks.join(', ')}</Badge>
+              )}
               {/* Ownership/sharing badge */}
               {definition?.isOwner ? (
                 <Badge variant="success">yours</Badge>
@@ -1683,8 +1731,9 @@ export function Dashboards(_props: DashboardsProps = {}) {
                 items={list.map((d) => {
                   const suffix = d.isOwner ? ' (yours)' : d.isShared ? ' (shared)' : d.visibility === 'public' ? ' (public)' : '';
                   const current = d.key === selectedKey ? ' ✓' : '';
+                  const packPrefix = isDefaultPackMode ? `[${String(d.pack || 'pack').toUpperCase()}] ` : '';
                   return {
-                    label: `${d.name}${suffix}${current}`,
+                    label: `${packPrefix}${d.name}${suffix}${current}`,
                     disabled: d.key === selectedKey,
                     onClick: () => setSelectedKey(d.key),
                   };
