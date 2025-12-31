@@ -249,7 +249,18 @@ function Donut({
   onSliceClick?: (slice: { label: string; value: number; color: string; raw?: unknown }) => void;
 }) {
   const { colors, radius, shadows } = useThemeTokens();
-  const total = slices.reduce((a, s) => a + (Number.isFinite(s.value) ? s.value : 0), 0) || 1;
+  const total = slices.reduce((a, s) => a + (Number.isFinite(s.value) ? s.value : 0), 0);
+  
+  // Show empty state if no data
+  if (total === 0 || slices.length === 0) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 240, color: colors.text.muted }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 14 }}>No data available</div>
+        </div>
+      </div>
+    );
+  }
   const cx = 120;
   const cy = 120;
   const rOuter = 100;
@@ -1920,10 +1931,10 @@ export function Dashboards() {
                   <div key={w.key} className={spanClass}>
                     <Card title={w.title || 'Pie'}>
                       <div style={{ padding: 14 }}>
-                        {st?.loading ? <Spinner /> : <Donut slices={slices as any} format={fmt as any} onSliceClick={onSliceClick} />}
-                        {!st?.loading && slices.some((s: any) => s?.raw === '__other__') ? (
+                        {!st || st?.loading ? <Spinner /> : <Donut slices={slices as any} format={fmt as any} onSliceClick={onSliceClick} />}
+                        {st && !st?.loading && slices.some((s: any) => s?.raw === '__other__') ? (
                           <div style={{ marginTop: 10, fontSize: 12, color: colors.text.muted }}>
-                            Tip: “{otherLabel}” is an aggregate bucket; drilldown is available on named slices only (for now).
+                            Tip: "{otherLabel}" is an aggregate bucket; drilldown is available on named slices only (for now).
                           </div>
                         ) : null}
                       </div>
