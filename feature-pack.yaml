@@ -95,7 +95,7 @@ routes:
     roles: []
   - path: /error-log
     page: ErrorLog
-    roles: []
+    roles: [admin]
 
 nav:
   - label: Error Log
@@ -103,6 +103,7 @@ nav:
     icon: alert-circle
     group: system
     weight: 900
+    roles: [admin]
 
 ## Nav entry intentionally omitted for MVP:
 ## dashboards should be discovered from within the Projects feature pack (not global/root).
