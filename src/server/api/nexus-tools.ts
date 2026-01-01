@@ -36,11 +36,45 @@ export async function GET(request: NextRequest) {
   // Tool surface is simply endpoints belonging to the feature pack.
   const tools = endpoints.filter((ep: any) => String(ep?._featurePack || '') === pack);
 
+  // Dynamic, user-scoped capability unions:
+  // Some packs (notably metrics-core) have *data-level ACL* where the tool itself is static
+  // (e.g. /api/metrics/query) but the *allowed keys/options* are user-specific.
+  //
+  // Nexus/agents should not even see forbidden items (fail closed).
+  let dynamic: Record<string, any> | null = null;
+  if (pack === 'metrics-core') {
+    try {
+      const origin = new URL(request.url).origin;
+      const auth = request.headers.get('authorization');
+      const cookie = request.headers.get('cookie');
+      const headers: Record<string, string> = {};
+      if (auth) headers['authorization'] = auth;
+      if (cookie) headers['cookie'] = cookie;
+
+      const resp = await fetch(`${origin}/api/metrics/catalog`, { headers });
+      const json = await resp.json().catch(() => null);
+      const items = Array.isArray((json as any)?.items) ? (json as any).items : [];
+      const allowedMetricKeys = items
+        .map((it: any) => String(it?.key || '').trim())
+        .filter((k: string) => Boolean(k));
+
+      dynamic = {
+        metrics: {
+          allowedMetricKeys,
+        },
+      };
+    } catch {
+      // Fail closed: if we can't compute per-user allowed keys, expose none.
+      dynamic = { metrics: { allowedMetricKeys: [] } };
+    }
+  }
+
   return NextResponse.json({
     generated: Boolean((caps as any)?.generated),
     kind: 'hit-nexus-tools',
     pack,
     tools,
+    dynamic,
   });
 }
 
