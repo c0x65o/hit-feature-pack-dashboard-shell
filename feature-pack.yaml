@@ -83,6 +83,16 @@ api:
       handler: "@hit/feature-pack-dashboard-shell/server/api/dashboard-definitions-shares"
       description: "List/add/remove share entries for a dashboard definition (ACL)"
 
+    # Nexus (AI routing) — compile-time pack options + tool surfaces
+    - path: /api/nexus/options
+      methods: [GET]
+      handler: "@hit/feature-pack-dashboard-shell/server/api/nexus-options"
+      description: "Nexus router options (enabled packs + titles/descriptions + agent prompts + nexus prompt)"
+    - path: /api/nexus/tools
+      methods: [GET]
+      handler: "@hit/feature-pack-dashboard-shell/server/api/nexus-tools"
+      description: "Tool surface for a given feature pack (from .hit/generated/capabilities.json)"
+
 routes:
   - path: /dashboards
     page: Dashboards
@@ -145,4 +155,23 @@ config:
       enum: [light, dark, system]
       default: system
       description: Default theme mode
+    nexus_prompt:
+      type: string
+      default: |
+        You are Nexus.
+        
+        Your ONLY job is to route the user's request to exactly one destination:
+        - one of the enabled feature packs, OR
+        - back to the user (ask a clarifying question / respond directly).
+        
+        You MUST choose the best route based on the pack titles/descriptions and the user's request.
+        
+        You NEVER execute tools. You NEVER call APIs. You ONLY route.
+      description: System prompt used by the Nexus router (AI)
+    nexus_debug:
+      type: boolean
+      default: false
+      description: |
+        Admin-only: when enabled, Nexus/pack agents may emit internal "pulse" debug events
+        (routing decisions, intermediate summaries, agent handoffs). Never shown to non-admin users.
     # dashboards_enabled removed as part of dashboard system reset.
