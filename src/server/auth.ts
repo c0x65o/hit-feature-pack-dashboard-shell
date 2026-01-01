@@ -10,6 +10,13 @@ export interface User {
   featurePacks?: Record<string, any>;
 }
 
+function base64UrlDecode(input: string): string {
+  const s = String(input || '').replace(/-/g, '+').replace(/_/g, '/');
+  const pad = s.length % 4 === 0 ? '' : '='.repeat(4 - (s.length % 4));
+  // atob exists in modern Node runtimes and in the browser runtime.
+  return atob(s + pad);
+}
+
 /**
  * Extract user from JWT token in cookies or Authorization header
  * Also checks x-user-id header (set by proxy/middleware in production)
@@ -32,7 +39,7 @@ export function extractUserFromRequest(request: NextRequest): User | null {
       const parts = token.split('.');
       if (parts.length !== 3) return null;
 
-      const payload = JSON.parse(atob(parts[1]));
+      const payload = JSON.parse(base64UrlDecode(parts[1]));
 
       // Check expiration
       if (payload.exp && payload.exp * 1000 < Date.now()) {
@@ -57,11 +64,19 @@ export function extractUserFromRequest(request: NextRequest): User | null {
         payload.unique_name ||
         '';
 
+      // Normalize roles (string | list | undefined)
+      const rolesRaw = payload.roles ?? payload.role ?? [];
+      const roles = Array.isArray(rolesRaw)
+        ? rolesRaw.map((r: unknown) => String(r)).map((r: string) => r.trim()).filter(Boolean)
+        : typeof rolesRaw === 'string'
+          ? [rolesRaw.trim()].filter(Boolean)
+          : [];
+
       return {
         sub: payload.sub || email || '',
         email: email || '',
         name: payload.name || email || '',
-        roles: payload.roles || [],
+        roles,
         groups,
         featurePacks: (payload.featurePacks && typeof payload.featurePacks === 'object') ? payload.featurePacks : undefined,
       };
