@@ -1179,15 +1179,40 @@ export function Dashboards(_props: DashboardsProps = {}) {
             const ownerKind = typeof pres?.owner?.kind === 'string' ? pres.owner.kind.trim().toLowerCase() : '';
             const ownerId = typeof pres?.owner?.id === 'string' ? pres.owner.id.trim() : '';
             const hasOwnerFilter = Boolean(ownerKind && ownerId);
+            // Support filtering by entity kinds (metrics that support these entity kinds)
+            const filterEntityKinds: string[] = Array.isArray(pres?.filterEntityKinds)
+              ? (pres.filterEntityKinds as any[]).map((x) => String(x || '').trim().toLowerCase()).filter(Boolean)
+              : [];
+            const hasEntityKindsFilter = filterEntityKinds.length > 0;
+            // Support filtering by category
+            const filterCategories: string[] = Array.isArray(pres?.filterCategories)
+              ? (pres.filterCategories as any[]).map((x) => String(x || '').trim().toLowerCase()).filter(Boolean)
+              : [];
+            const hasCategories = filterCategories.length > 0;
 
             const items = Object.values(catalogMap || {});
             const filtered = items
               .filter((it) => {
+                // Filter by owner (e.g., only feature pack metrics)
                 if (hasOwnerFilter) {
                   const ik = typeof (it as any)?.owner?.kind === 'string' ? String((it as any).owner.kind).trim().toLowerCase() : '';
                   const iid = typeof (it as any)?.owner?.id === 'string' ? String((it as any).owner.id).trim() : '';
                   if (ik !== ownerKind || iid !== ownerId) return false;
                 }
+                // Filter by entity kinds (metrics that support any of these entity kinds)
+                if (hasEntityKindsFilter) {
+                  const metricEntityKinds = Array.isArray(it.entity_kinds)
+                    ? (it.entity_kinds as any[]).map((x) => String(x || '').trim().toLowerCase())
+                    : [];
+                  const hasMatch = filterEntityKinds.some((ek) => metricEntityKinds.includes(ek));
+                  if (!hasMatch) return false;
+                }
+                // Filter by category
+                if (hasCategories) {
+                  const cat = typeof it.category === 'string' ? it.category.trim().toLowerCase() : '';
+                  if (!filterCategories.includes(cat)) return false;
+                }
+                // If entityKind is explicitly set (not auto), filter metrics that support it
                 if (!isAutoEntityKind) {
                   const kinds = Array.isArray(it.entity_kinds) ? it.entity_kinds : [];
                   // If the metric declares supported entity kinds, respect it.
@@ -1384,8 +1409,9 @@ export function Dashboards(_props: DashboardsProps = {}) {
           }
 
           setKpiValues((p) => ({ ...p, [w.key]: { loading: false, value: Number.isFinite(v) ? v : 0, prev } }));
-        } catch {
-          setKpiValues((p) => ({ ...p, [w.key]: { loading: false, value: 0 } }));
+        } catch (err) {
+          console.warn(`[Dashboard] KPI "${w.key}" failed:`, err);
+          setKpiValues((p) => ({ ...p, [w.key]: { loading: false, value: 0, error: String(err) } }));
         }
       })
     );
@@ -2020,15 +2046,40 @@ export function Dashboards(_props: DashboardsProps = {}) {
                 const ownerKind = typeof pres?.owner?.kind === 'string' ? pres.owner.kind.trim().toLowerCase() : '';
                 const ownerId = typeof pres?.owner?.id === 'string' ? pres.owner.id.trim() : '';
                 const hasOwnerFilter = Boolean(ownerKind && ownerId);
+                // Support filtering by entity kinds (metrics that support these entity kinds)
+                const filterEntityKinds: string[] = Array.isArray(pres?.filterEntityKinds)
+                  ? (pres.filterEntityKinds as any[]).map((x) => String(x || '').trim().toLowerCase()).filter(Boolean)
+                  : [];
+                const hasEntityKindsFilter = filterEntityKinds.length > 0;
+                // Support filtering by category
+                const filterCategories: string[] = Array.isArray(pres?.filterCategories)
+                  ? (pres.filterCategories as any[]).map((x) => String(x || '').trim().toLowerCase()).filter(Boolean)
+                  : [];
+                const hasCategories = filterCategories.length > 0;
 
                 const items = Object.values(catalogByKey || {});
                 const filtered = items
                   .filter((it) => {
+                    // Filter by owner (e.g., only feature pack metrics)
                     if (hasOwnerFilter) {
                       const ik = typeof (it as any)?.owner?.kind === 'string' ? String((it as any).owner.kind).trim().toLowerCase() : '';
                       const iid = typeof (it as any)?.owner?.id === 'string' ? String((it as any).owner.id).trim() : '';
                       if (ik !== ownerKind || iid !== ownerId) return false;
                     }
+                    // Filter by entity kinds (metrics that support any of these entity kinds)
+                    if (hasEntityKindsFilter) {
+                      const metricEntityKinds = Array.isArray(it.entity_kinds)
+                        ? (it.entity_kinds as any[]).map((x) => String(x || '').trim().toLowerCase())
+                        : [];
+                      const hasMatch = filterEntityKinds.some((ek) => metricEntityKinds.includes(ek));
+                      if (!hasMatch) return false;
+                    }
+                    // Filter by category
+                    if (hasCategories) {
+                      const cat = typeof it.category === 'string' ? it.category.trim().toLowerCase() : '';
+                      if (!filterCategories.includes(cat)) return false;
+                    }
+                    // If entityKind is explicitly set (not auto), filter metrics that support it
                     if (!isAutoEntityKind) {
                       const kinds = Array.isArray(it.entity_kinds) ? it.entity_kinds : [];
                       // If the metric declares supported entity kinds, respect it.
