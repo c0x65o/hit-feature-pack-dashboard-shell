@@ -103,17 +103,36 @@ routes:
   - path: /reports/builder
     page: ReportBuilder
     roles: []
-  - path: /error-log
+  - path: /logs/errors
     page: ErrorLog
+    roles: [admin]
+  - path: /logs/latency
+    page: AppLatency
     roles: [admin]
 
 nav:
-  - label: Error Log
-    path: /error-log
-    icon: alert-circle
+  - id: logs
+    label: Logs
+    icon: FileText
     group: system
     weight: 900
     roles: [admin]
+    showWhen: authenticated
+    children:
+      - id: logs-errors
+        label: Error Log
+        path: /logs/errors
+        icon: AlertCircle
+        weight: 100
+        roles: [admin]
+        showWhen: authenticated
+      - id: logs-latency
+        label: App Latency
+        path: /logs/latency
+        icon: Clock
+        weight: 110
+        roles: [admin]
+        showWhen: authenticated
 
 ## Nav entry intentionally omitted for MVP:
 ## dashboards should be discovered from within the Projects feature pack (not global/root).

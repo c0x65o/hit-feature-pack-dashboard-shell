@@ -724,6 +724,10 @@ interface DashboardsProps {
   [key: string]: any; // Allow other props to be passed but ignore them
 }
 
+const LS_LAST_DASHBOARD_KEY = 'hit.dashboard.lastSelectedKey';
+const LS_LAST_DASHBOARD_PACK = 'hit.dashboard.lastSelectedPack';
+const LS_LAST_DASHBOARD_KEY_BY_PACK_PREFIX = 'hit.dashboard.lastSelectedKeyByPack:';
+
 export function Dashboards(_props: DashboardsProps = {}) {
   const { Page, Card, Button, Dropdown, Select, Input, Modal, Spinner, Badge } = useUi();
   const { colors, radius } = useThemeTokens();
@@ -751,7 +755,9 @@ export function Dashboards(_props: DashboardsProps = {}) {
     Record<string, { loading: boolean; totalsByMetricKey?: Record<string, number> }>
   >({});
   const [pieSlices, setPieSlices] = React.useState<Record<string, { loading: boolean; slices?: any[]; otherLabel?: string }>>({});
-  const [apiPieSlices, setApiPieSlices] = React.useState<Record<string, { loading: boolean; slices?: any[]; otherLabel?: string }>>({});
+  const [apiPieSlices, setApiPieSlices] = React.useState<
+    Record<string, { loading: boolean; slices?: any[]; otherLabel?: string; error?: string }>
+  >({});
   const [apiTables, setApiTables] = React.useState<Record<string, { loading: boolean; rows?: any[]; total?: number }>>({});
   const [lineSeries, setLineSeries] = React.useState<Record<string, { loading: boolean; series?: Array<{ label: string; color: string; points: Array<{ t: number; v: number }> }> }>>({});
   const [lineBucketByWidgetKey, setLineBucketByWidgetKey] = React.useState<Record<string, Bucket>>({});
@@ -809,11 +815,36 @@ export function Dashboards(_props: DashboardsProps = {}) {
   }, []);
 
 
-  const urlParams = React.useMemo(() => {
-    if (typeof window === 'undefined') return new URLSearchParams();
-    return new URLSearchParams(window.location.search);
-  }, []);
-  const pack = React.useMemo(() => (typeof window === 'undefined' ? '' : (new URLSearchParams(window.location.search).get('pack') || '').trim()), []);
+  // Track URL search params reactively (not just on mount)
+  const [urlSearch, setUrlSearch] = React.useState(() =>
+    typeof window === 'undefined' ? '' : window.location.search
+  );
+
+  // Listen for URL changes (popstate for back/forward, custom event for pushState/replaceState)
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const syncUrl = () => setUrlSearch(window.location.search);
+
+    // Listen for back/forward navigation
+    window.addEventListener('popstate', syncUrl);
+
+    // For client-side navigation that uses pushState/replaceState, we poll or use MutationObserver
+    // A simple approach: check URL periodically or on visibility change
+    const interval = setInterval(() => {
+      if (window.location.search !== urlSearch) {
+        setUrlSearch(window.location.search);
+      }
+    }, 200);
+
+    return () => {
+      window.removeEventListener('popstate', syncUrl);
+      clearInterval(interval);
+    };
+  }, [urlSearch]);
+
+  const urlParams = React.useMemo(() => new URLSearchParams(urlSearch), [urlSearch]);
+  const pack = React.useMemo(() => (urlParams.get('pack') || '').trim(), [urlParams]);
   const defaultPacks = React.useMemo(() => ['crm', 'projects', 'marketing'], []);
   const isDefaultPackMode = !pack;
 
@@ -958,8 +989,25 @@ export function Dashboards(_props: DashboardsProps = {}) {
       const fromUrl = (typeof window !== 'undefined') ? (new URLSearchParams(window.location.search).get('key') || '').trim() : '';
       // Only use the key from URL if it exists in the current pack's dashboard list
       const validFromUrl = fromUrl && items.some((item) => item.key === fromUrl) ? fromUrl : '';
-      const pick = validFromUrl || items[0]?.key || '';
-      setSelectedKey((prev) => prev || pick);
+
+      // If URL doesn't specify a valid key, restore last selection from localStorage.
+      let fromStorage = '';
+      if (!validFromUrl && typeof window !== 'undefined') {
+        try {
+          if (pack) {
+            fromStorage = (window.localStorage.getItem(`${LS_LAST_DASHBOARD_KEY_BY_PACK_PREFIX}${pack}`) || '').trim();
+          } else {
+            fromStorage = (window.localStorage.getItem(LS_LAST_DASHBOARD_KEY) || '').trim();
+          }
+        } catch {
+          // ignore
+        }
+      }
+      const validFromStorage = fromStorage && items.some((item) => item.key === fromStorage) ? fromStorage : '';
+
+      const pick = validFromUrl || validFromStorage || items[0]?.key || '';
+      // Always set the key when loading a new list (pack may have changed)
+      setSelectedKey(pick);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -983,13 +1031,32 @@ export function Dashboards(_props: DashboardsProps = {}) {
     }
   }, []);
 
+  // Load catalog once on mount
   React.useEffect(() => {
     loadCatalog();
+  }, [loadCatalog]);
+
+  // Re-load dashboard list whenever pack changes (URL navigation)
+  React.useEffect(() => {
     loadList();
-  }, []);
+  }, [pack, loadList]);
 
   React.useEffect(() => {
     if (!selectedKey) return;
+    // Persist last-selected dashboard (global + per-pack) so returning users land where they left off.
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem(LS_LAST_DASHBOARD_KEY, selectedKey);
+        const item = list.find((d) => d.key === selectedKey);
+        const p = String(item?.pack || pack || '').trim();
+        if (p) {
+          window.localStorage.setItem(`${LS_LAST_DASHBOARD_KEY_BY_PACK_PREFIX}${p}`, selectedKey);
+          window.localStorage.setItem(LS_LAST_DASHBOARD_PACK, p);
+        }
+      } catch {
+        // ignore
+      }
+    }
     // keep URL in sync
     if (typeof window !== 'undefined') {
       const sp = new URLSearchParams(window.location.search);
@@ -1361,9 +1428,17 @@ export function Dashboards(_props: DashboardsProps = {}) {
               ...(otherSum > 0 ? [{ label: otherLabel, raw: '__other__', value: otherSum, color: '#94a3b8', href: '' }] : []),
             ];
 
-            setApiPieSlices((p) => ({ ...p, [w.key]: { loading: false, slices, otherLabel } }));
-          } catch {
-            setApiPieSlices((p) => ({ ...p, [w.key]: { loading: false, slices: [], otherLabel: String(w?.presentation?.otherLabel || 'Other') } }));
+            setApiPieSlices((p) => ({ ...p, [w.key]: { loading: false, slices, otherLabel, error: undefined } }));
+          } catch (e: any) {
+            setApiPieSlices((p) => ({
+              ...p,
+              [w.key]: {
+                loading: false,
+                slices: [],
+                otherLabel: String(w?.presentation?.otherLabel || 'Other'),
+                error: String(e?.message || 'Failed to load'),
+              },
+            }));
           }
         })
       );
@@ -2078,6 +2153,7 @@ export function Dashboards(_props: DashboardsProps = {}) {
                 const slices = Array.isArray(st?.slices) ? st?.slices : [];
                 const otherLabel = String(st?.otherLabel || w?.presentation?.otherLabel || 'Other');
                 const format = (w?.presentation?.format === 'usd') ? 'usd' : 'number';
+                const error = typeof st?.error === 'string' ? st.error : '';
 
                 const onSliceClick = async (slice: any) => {
                   const href = typeof slice?.href === 'string' ? slice.href : '';
@@ -2089,7 +2165,21 @@ export function Dashboards(_props: DashboardsProps = {}) {
                   <div key={w.key} className={spanClass}>
                     <Card title={w.title || 'Pie'}>
                       <div style={{ padding: 14 }}>
-                        {!st || st?.loading ? <Spinner /> : <Donut slices={slices as any} format={format as any} onSliceClick={onSliceClick} />}
+                        {!st || st?.loading ? <Spinner /> : (
+                          error ? (
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 240 }}>
+                              <div style={{ fontSize: 13, color: colors.text.muted, textAlign: 'center', maxWidth: 520 }}>
+                                <div style={{ fontWeight: 600, color: colors.text.primary, marginBottom: 6 }}>Could not load chart</div>
+                                <div>{error}</div>
+                                <div style={{ marginTop: 8, fontSize: 12 }}>
+                                  Tip: open <code>/api/crm/reports/pipeline-health</code> in a new tab to see the raw response.
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <Donut slices={slices as any} format={format as any} onSliceClick={onSliceClick} />
+                          )
+                        )}
                         {st && !st?.loading && slices.some((s: any) => s?.raw === '__other__') ? (
                           <div style={{ marginTop: 10, fontSize: 12, color: colors.text.muted }}>
                             Tip: "{otherLabel}" is an aggregate bucket; click named slices to open filtered lists.
