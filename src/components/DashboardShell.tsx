@@ -800,24 +800,55 @@ function ShellContent({
 
   // Listen for user profile updates (e.g., after picture upload)
   useEffect(() => {
-    const handleUserProfileUpdate = (event: CustomEvent) => {
+    const handleUserProfileUpdate = async (event: CustomEvent) => {
       const detail = event.detail as { profile_picture_url?: string | null; email?: string };
-      const updatedProfilePictureUrl = detail?.profile_picture_url;
       const updatedEmail = detail?.email;
       
       // Only update if it's for the current user
-      if (updatedProfilePictureUrl !== undefined && currentUser && 
-          (!updatedEmail || updatedEmail === currentUser.email)) {
-        setCurrentUser({
-          ...currentUser,
-          avatar: updatedProfilePictureUrl || undefined,
+      if (!currentUser || (updatedEmail && updatedEmail !== currentUser.email)) {
+        return;
+      }
+
+      // Fetch updated user data from auth API
+      try {
+        const token = getStoredToken();
+        if (!token) return;
+
+        const response = await fetch(`/api/proxy/auth/users/${encodeURIComponent(currentUser.email || '')}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
         });
+
+        if (response.ok) {
+          const userData = await response.json();
+          // Map profile_picture_url to avatar
+          setCurrentUser({
+            ...currentUser,
+            avatar: userData.profile_picture_url || undefined,
+          });
+        }
+      } catch (err) {
+        // If fetch fails, fall back to using the event data
+        const updatedProfilePictureUrl = detail?.profile_picture_url;
+        if (updatedProfilePictureUrl !== undefined) {
+          setCurrentUser({
+            ...currentUser,
+            avatar: updatedProfilePictureUrl || undefined,
+          });
+        }
       }
     };
 
-    window.addEventListener('user-profile-updated' as any, handleUserProfileUpdate as EventListener);
+    const eventListener = (event: Event) => {
+      handleUserProfileUpdate(event as CustomEvent);
+    };
+
+    window.addEventListener('user-profile-updated', eventListener);
     return () => {
-      window.removeEventListener('user-profile-updated' as any, handleUserProfileUpdate as EventListener);
+      window.removeEventListener('user-profile-updated', eventListener);
     };
   }, [currentUser]);
 
