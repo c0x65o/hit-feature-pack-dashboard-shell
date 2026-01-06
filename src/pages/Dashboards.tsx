@@ -832,6 +832,10 @@ function MultiLineChart({
 
 interface DashboardsProps {
   onNavigate?: (path: string) => void;
+  /** Optional pack name - if provided, overrides URL query param */
+  pack?: string;
+  /** Optional initial dashboard key to select */
+  dashboardKey?: string;
   [key: string]: any; // Allow other props to be passed but ignore them
 }
 
@@ -874,7 +878,8 @@ function fetchWithAuth(input: RequestInfo | URL, init?: RequestInit) {
   return fetch(input, { ...init, headers, credentials: 'include' });
 }
 
-export function Dashboards(_props: DashboardsProps = {}) {
+export function Dashboards(props: DashboardsProps = {}) {
+  const { pack: packProp, dashboardKey: dashboardKeyProp } = props;
   const { Page, Card, Button, Dropdown, Select, Input, Modal, Spinner, Badge } = useUi();
   const { colors, radius } = useThemeTokens();
 
@@ -1061,7 +1066,11 @@ export function Dashboards(_props: DashboardsProps = {}) {
   }, [urlSearch]);
 
   const urlParams = React.useMemo(() => new URLSearchParams(urlSearch), [urlSearch]);
-  const pack = React.useMemo(() => (urlParams.get('pack') || '').trim(), [urlParams]);
+  // Use prop if provided, otherwise fall back to URL query param
+  const pack = React.useMemo(() => {
+    if (packProp) return packProp.trim();
+    return (urlParams.get('pack') || '').trim();
+  }, [packProp, urlParams]);
   const defaultPacks = React.useMemo(() => ['crm', 'projects', 'marketing'], []);
   const isDefaultPackMode = !pack;
 
@@ -1203,13 +1212,17 @@ export function Dashboards(_props: DashboardsProps = {}) {
 
       setList(items);
 
+      // Priority: 1. dashboardKeyProp, 2. URL key param, 3. localStorage
+      const fromProp = (dashboardKeyProp || '').trim();
+      const validFromProp = fromProp && items.some((item) => item.key === fromProp) ? fromProp : '';
+      
       const fromUrl = (typeof window !== 'undefined') ? (new URLSearchParams(window.location.search).get('key') || '').trim() : '';
       // Only use the key from URL if it exists in the current pack's dashboard list
       const validFromUrl = fromUrl && items.some((item) => item.key === fromUrl) ? fromUrl : '';
 
-      // If URL doesn't specify a valid key, restore last selection from localStorage.
+      // If prop/URL doesn't specify a valid key, restore last selection from localStorage.
       let fromStorage = '';
-      if (!validFromUrl && typeof window !== 'undefined') {
+      if (!validFromProp && !validFromUrl && typeof window !== 'undefined') {
         try {
           if (pack) {
             fromStorage = (window.localStorage.getItem(`${LS_LAST_DASHBOARD_KEY_BY_PACK_PREFIX}${pack}`) || '').trim();
@@ -1222,7 +1235,7 @@ export function Dashboards(_props: DashboardsProps = {}) {
       }
       const validFromStorage = fromStorage && items.some((item) => item.key === fromStorage) ? fromStorage : '';
 
-      const pick = validFromUrl || validFromStorage || items[0]?.key || '';
+      const pick = validFromProp || validFromUrl || validFromStorage || items[0]?.key || '';
       // Always set the key when loading a new list (pack may have changed)
       setSelectedKey(pick);
     } catch (e) {
@@ -1230,7 +1243,7 @@ export function Dashboards(_props: DashboardsProps = {}) {
     } finally {
       setLoadingList(false);
     }
-  }, [pack, defaultPacks]);
+  }, [pack, defaultPacks, dashboardKeyProp]);
 
   const loadDefinition = React.useCallback(async (key: string) => {
     if (!key) return;

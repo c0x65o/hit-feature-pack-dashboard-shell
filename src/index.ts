@@ -12,6 +12,9 @@
 // Main component
 export { DashboardShell, useShell } from './components/DashboardShell';
 
+// Dashboards page component (can be used by other packs with pack prop)
+export { Dashboards } from './pages/Dashboards';
+
 // UI Kit implementation (ERP style)
 export { erpKit } from './kit';
 
