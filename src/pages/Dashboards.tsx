@@ -1984,7 +1984,7 @@ export function Dashboards(_props: DashboardsProps = {}) {
                 points: buckets.map((tt) => ({ t: tt, v: Number(m.get(tt) ?? 0), bucketIso: bucketIsoByT.get(tt) })),
                 drillMenu: {
                   titlePrefix: String(w.title || 'Line'),
-                  options: metricKeys.map((mk) => ({
+                  options: metricKeys.map((mk: string) => ({
                     label: mk,
                     baseQuery: { metricKey: mk, bucket, agg, entityKind, groupByEntityId: true, entityIds: topIds, start: t.start, end: t.end },
                     rowContextBase: { entityId: id },
@@ -2000,7 +2000,7 @@ export function Dashboards(_props: DashboardsProps = {}) {
                 points: otherSeries.map((p) => ({ ...p, bucketIso: bucketIsoByT.get(p.t) })),
                 drillMenu: {
                   titlePrefix: String(w.title || 'Line'),
-                  options: metricKeys.map((mk) => ({
+                  options: metricKeys.map((mk: string) => ({
                     label: mk,
                     baseQuery: otherIdsLimited.length
                       ? { metricKey: mk, bucket, agg, entityKind, groupByEntityId: true, entityIds: otherIdsLimited, start: t.start, end: t.end }
