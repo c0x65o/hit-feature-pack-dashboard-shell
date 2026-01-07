@@ -144,11 +144,39 @@ function groupNavItems(items: NavItem[]): { group: string; label: string; items:
 // NAV FILTERING HELPERS
 // =============================================================================
 
+function navPathMatches(activePath: string, itemPath: string): boolean {
+  const a = String(activePath || '').trim();
+  const b = String(itemPath || '').trim();
+  if (!a || !b) return false;
+
+  // Fast path
+  if (a === b) return true;
+
+  const split = (p: string) => {
+    const [pathname, qs = ''] = p.split('?', 2);
+    return { pathname: pathname || '', sp: new URLSearchParams(qs) };
+  };
+
+  const ap = split(a);
+  const bp = split(b);
+  if (ap.pathname !== bp.pathname) return false;
+
+  // If the nav item has no query params, ignore active query params.
+  const bpHasParams = Array.from(bp.sp.keys()).length > 0;
+  if (!bpHasParams) return true;
+
+  // If nav item has query params, treat them as a required subset.
+  for (const [k, v] of bp.sp.entries()) {
+    if (ap.sp.get(k) !== v) return false;
+  }
+  return true;
+}
+
 function navHasActiveDescendant(item: NavItem, activePath: string): boolean {
   const children = item.children as unknown as NavItem[] | undefined;
   if (!children || children.length === 0) return false;
   for (const child of children) {
-    if (child.path === activePath) return true;
+    if (child.path && navPathMatches(activePath, child.path)) return true;
     if (navHasActiveDescendant(child, activePath)) return true;
   }
   return false;
@@ -271,7 +299,7 @@ function NavItemComponent({ item, level = 0, activePath, onNavigate }: NavItemCo
   const hasChildren = item.children && item.children.length > 0;
   const isExpanded = expandedNodes.has(item.id);
   const hasActiveDescendant = navHasActiveDescendant(item, activePath);
-  const isActive = activePath === item.path || (hasChildren && hasActiveDescendant);
+  const isActive = (item.path ? navPathMatches(activePath, item.path) : false) || (hasChildren && hasActiveDescendant);
 
   const iconName = item.icon ? String(item.icon) : '';
 
@@ -375,7 +403,7 @@ function CollapsedNavItem({ item, activePath, onNavigate, isOpen, onOpen, onStar
 
   const hasChildren = item.children && item.children.length > 0;
   const hasActiveDescendant = navHasActiveDescendant(item, activePath);
-  const isActive = activePath === item.path || (hasChildren && hasActiveDescendant);
+  const isActive = (item.path ? navPathMatches(activePath, item.path) : false) || (hasChildren && hasActiveDescendant);
   const hasActiveChild = hasChildren && hasActiveDescendant;
 
   const iconName = item.icon ? String(item.icon) : '';
@@ -421,7 +449,7 @@ function CollapsedNavItem({ item, activePath, onNavigate, isOpen, onOpen, onStar
     return nodes.map((node, idx) => {
       const child = node as NavItem;
       const childIconName = child.icon ? String(child.icon) : '';
-      const childIsActive = activePath === child.path || navHasActiveDescendant(child, activePath);
+      const childIsActive = (child.path ? navPathMatches(activePath, child.path) : false) || navHasActiveDescendant(child, activePath);
       const childIsHovered = hoveredChildIdx === idx && depth === 0;
 
       const paddingLeft = depth > 0 ? spacing.lg : spacing.md;

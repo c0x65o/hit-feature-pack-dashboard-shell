@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useUi } from '@hit/ui-kit';
 import { AclPicker } from '@hit/ui-kit';
 import { useThemeTokens } from '@hit/ui-kit';
@@ -882,6 +883,9 @@ export function Dashboards(props: DashboardsProps = {}) {
   const { pack: packProp, dashboardKey: dashboardKeyProp } = props;
   const { Page, Card, Button, Dropdown, Select, Input, Modal, Spinner, Badge } = useUi();
   const { colors, radius } = useThemeTokens();
+  const router = useRouter();
+  const pathname = usePathname() ?? '/dashboards';
+  const searchParams = useSearchParams();
 
   const [list, setList] = React.useState<DashboardListItem[]>([]);
   const [selectedKey, setSelectedKey] = React.useState<string>('');
@@ -1037,42 +1041,14 @@ export function Dashboards(props: DashboardsProps = {}) {
   }, []);
 
 
-  // Track URL search params reactively (not just on mount)
-  const [urlSearch, setUrlSearch] = React.useState(() =>
-    typeof window === 'undefined' ? '' : window.location.search
-  );
-
-  // Listen for URL changes (popstate for back/forward, custom event for pushState/replaceState)
-  React.useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const syncUrl = () => setUrlSearch(window.location.search);
-
-    // Listen for back/forward navigation
-    window.addEventListener('popstate', syncUrl);
-
-    // For client-side navigation that uses pushState/replaceState, we poll or use MutationObserver
-    // A simple approach: check URL periodically or on visibility change
-    const interval = setInterval(() => {
-      if (window.location.search !== urlSearch) {
-        setUrlSearch(window.location.search);
-      }
-    }, 200);
-
-    return () => {
-      window.removeEventListener('popstate', syncUrl);
-      clearInterval(interval);
-    };
-  }, [urlSearch]);
-
-  const urlParams = React.useMemo(() => new URLSearchParams(urlSearch), [urlSearch]);
-  // Use prop if provided, otherwise fall back to URL query param
+  // Use prop if provided, otherwise fall back to URL query param.
   const pack = React.useMemo(() => {
     if (packProp) return packProp.trim();
-    return (urlParams.get('pack') || '').trim();
-  }, [packProp, urlParams]);
+    return (searchParams?.get('pack') || '').trim();
+  }, [packProp, searchParams]);
   const defaultPacks = React.useMemo(() => ['crm', 'projects', 'marketing'], []);
   const isDefaultPackMode = !pack;
+  const urlKey = React.useMemo(() => (searchParams?.get('key') || '').trim(), [searchParams]);
 
   const range = React.useMemo(() => {
     if (preset === 'custom') {
@@ -1272,6 +1248,11 @@ export function Dashboards(props: DashboardsProps = {}) {
   }, [pack, loadList]);
 
   React.useEffect(() => {
+    // If user navigated with back/forward to a specific ?key=..., honor it.
+    if (urlKey && urlKey !== selectedKey && list.some((d) => d.key === urlKey)) {
+      setSelectedKey(urlKey);
+      return;
+    }
     if (!selectedKey) return;
     // Persist last-selected dashboard (global + per-pack) so returning users land where they left off.
     if (typeof window !== 'undefined') {
@@ -1287,15 +1268,14 @@ export function Dashboards(props: DashboardsProps = {}) {
         // ignore
       }
     }
-    // keep URL in sync
-    if (typeof window !== 'undefined') {
-      const sp = new URLSearchParams(window.location.search);
+    // Keep URL in sync for deep-linking, but via Next router to avoid desync with app state.
+    const sp = new URLSearchParams(searchParams?.toString() || '');
+    if (sp.get('key') !== selectedKey) {
       sp.set('key', selectedKey);
-      const next = `${window.location.pathname}?${sp.toString()}`;
-      window.history.replaceState({}, '', next);
+      router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
     }
     loadDefinition(selectedKey);
-  }, [selectedKey]);
+  }, [selectedKey, urlKey, list, pack, loadDefinition, pathname, router, searchParams]);
 
 
   const resolveProjectNames = React.useCallback(async (ids: string[]) => {
@@ -2279,13 +2259,22 @@ export function Dashboards(props: DashboardsProps = {}) {
         {error ? <div style={{ color: '#ef4444', fontSize: 13 }}>{error}</div> : null}
 
         <div className="grid">
-          {loadingDash ? (
+          {loadingDash && !definition ? (
             <div className="span-12">
               <Card><div style={{ padding: 18 }}><Spinner /></div></Card>
             </div>
           ) : null}
 
-          {!loadingDash && definition ? (
+          {loadingDash && definition ? (
+            <div className="span-12" style={{ opacity: 0.9 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 2px' }}>
+                <Spinner />
+                <span style={{ fontSize: 13, color: colors.text.muted }}>Loading dashboard…</span>
+              </div>
+            </div>
+          ) : null}
+
+          {definition ? (
             widgetList.map((w: any) => {
               const grid = w.grid || {};
               const span = typeof grid.w === 'number' ? grid.w : (w.kind === 'kpi' ? 3 : (w.kind === 'pie' || w.kind === 'api_pie') ? 6 : 12);
