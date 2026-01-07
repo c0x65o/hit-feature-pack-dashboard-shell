@@ -1570,12 +1570,23 @@ function ShellContent({
   const [pagePermsLoading, setPagePermsLoading] = useState(false);
   const [allowedByPath, setAllowedByPath] = useState<Record<string, boolean>>({});
 
-  // Compute role-filtered nav, then permission-filter (batched)
-  const roleFilteredNav = filterNavByRoles(navItems, currentUser?.roles);
+  // Compute role-filtered nav, then permission-filter (batched).
+  // Memoize so callers that reconstruct arrays each render don't retrigger permission checks.
+  const roleFilteredNav = React.useMemo(
+    () => filterNavByRoles(navItems, currentUser?.roles),
+    [navItems, currentUser?.roles]
+  );
+
+  // Stable signature for permission checks: the set of reachable paths (after role filtering).
+  // This prevents "nav flashes" caused by referential changes in navItems.
+  const navPathsKey = React.useMemo(() => {
+    const paths = flattenNavPaths(roleFilteredNav).sort();
+    return paths.join('\n');
+  }, [roleFilteredNav]);
 
   useEffect(() => {
     let cancelled = false;
-    const paths = flattenNavPaths(roleFilteredNav);
+    const paths = navPathsKey ? navPathsKey.split('\n').filter(Boolean) : [];
     // Fail-closed while loading to avoid showing links that will 403.
     setPagePermsLoading(true);
     setAllowedByPath({});
@@ -1593,7 +1604,7 @@ function ShellContent({
     return () => {
       cancelled = true;
     };
-  }, [currentUser?.email, currentUser?.roles, navItems]); // navItems can change due to runtime injections
+  }, [currentUser?.email, currentUser?.roles, navPathsKey]);
 
   const permissionFilteredNav = pagePermsLoading
     ? ([] as NavItem[])

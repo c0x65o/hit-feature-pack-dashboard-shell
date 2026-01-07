@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useUi } from '@hit/ui-kit';
 import { AclPicker } from '@hit/ui-kit';
 import { useThemeTokens } from '@hit/ui-kit';
@@ -883,7 +883,10 @@ export function Dashboards(props: DashboardsProps = {}) {
   const { pack: packProp, dashboardKey: dashboardKeyProp } = props;
   const { Page, Card, Button, Dropdown, Select, Input, Modal, Spinner, Badge } = useUi();
   const { colors, radius } = useThemeTokens();
+  const router = useRouter();
+  const pathname = usePathname() ?? '/dashboards';
   const searchParams = useSearchParams();
+  const searchParamsString = searchParams?.toString() || '';
 
   const [list, setList] = React.useState<DashboardListItem[]>([]);
   const [selectedKey, setSelectedKey] = React.useState<string>('');
@@ -1046,7 +1049,7 @@ export function Dashboards(props: DashboardsProps = {}) {
   }, [packProp, searchParams]);
   const defaultPacks = React.useMemo(() => ['crm', 'projects', 'marketing'], []);
   const isDefaultPackMode = !pack;
-  const urlKey = React.useMemo(() => (searchParams?.get('key') || '').trim(), [searchParams]);
+  const urlKey = React.useMemo(() => (searchParams?.get('key') || '').trim(), [searchParamsString]);
 
   const range = React.useMemo(() => {
     if (preset === 'custom') {
@@ -1274,17 +1277,14 @@ export function Dashboards(props: DashboardsProps = {}) {
   React.useEffect(() => {
     if (!selectedKey) return;
     // Keep URL in sync for deep-linking without triggering Next navigation.
-    // (router.replace on search-param changes can cause remount/suspense flashes in some setups.)
-    if (typeof window !== 'undefined') {
-      const sp = new URLSearchParams(window.location.search);
-      if (sp.get('key') !== selectedKey) {
-        sp.set('key', selectedKey);
-        const next = `${window.location.pathname}?${sp.toString()}`;
-        window.history.replaceState({}, '', next);
-      }
+    // Use Next router so `useSearchParams()` stays consistent (back/forward + active nav).
+    const sp = new URLSearchParams(searchParamsString);
+    if (sp.get('key') !== selectedKey) {
+      sp.set('key', selectedKey);
+      router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
     }
     loadDefinition(selectedKey);
-  }, [selectedKey, loadDefinition]);
+  }, [selectedKey, loadDefinition, pathname, router, searchParamsString]);
 
 
   const resolveProjectNames = React.useCallback(async (ids: string[]) => {
