@@ -128,7 +128,7 @@ export const notificationReads = pgTable('notification_reads', {
     readAtIdx: index('notification_reads_read_at_idx').on(table.readAt),
 }));
 // NOTE:
-// Dashboard definitions + shares were moved out of dashboard-shell into `@hit/feature-pack-dashboard-core`
+// Dashboard definitions + shares were moved out of the shell pack into `@hit/feature-pack-dashboard-core`
 // to avoid circular dependencies and make dashboards first-class.
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS & TYPES

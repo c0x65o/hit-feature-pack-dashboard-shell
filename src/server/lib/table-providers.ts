@@ -31,8 +31,14 @@ function quoteIdent(ident: string): string {
 export function getTableProviderRegistryFromRequest(request: NextRequest): TableProviderRegistry {
   const user = extractUserFromRequest(request) as User | null;
   const raw = (user as any)?.featurePacks || {};
-  const dash = raw?.['dashboard-shell'] || raw?.dashboardShell || raw?.dashboard_shell || {};
-  const options = dash?.options || {};
+  const shell =
+    raw?.['erp-shell-core'] ||
+    raw?.['dashboard-shell'] ||
+    raw?.erpShellCore ||
+    raw?.dashboardShell ||
+    raw?.dashboard_shell ||
+    {};
+  const options = (shell as any)?.options || {};
   const providers = options?.tableProviders || options?.table_providers || {};
   const reg: TableProviderRegistry = {};
 

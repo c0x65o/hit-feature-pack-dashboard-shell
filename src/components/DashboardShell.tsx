@@ -40,9 +40,19 @@ export function useShell() {
 
 type ThemePreference = 'light' | 'dark' | 'system';
 
-const THEME_STORAGE_KEY = 'dashboard-shell-theme';
-const THEME_COOKIE_KEY = 'dashboard-shell-theme';
+// Canonical keys (erp-shell-core). Keep legacy fallbacks for older apps.
+const THEME_STORAGE_KEY = 'erp-shell-core-theme';
+const THEME_COOKIE_KEY = 'erp-shell-core-theme';
+const LEGACY_THEME_STORAGE_KEY = 'dashboard-shell-theme';
+const LEGACY_THEME_COOKIE_KEY = 'dashboard-shell-theme';
 const TOKEN_COOKIE_KEY = 'hit_token';
+
+const MENU_OPEN_KEY = 'erp-shell-core-menu-open';
+const LEGACY_MENU_OPEN_KEY = 'dashboard-shell-menu-open';
+const EXPANDED_NODES_KEY = 'erp-shell-core-expanded-nodes';
+const LEGACY_EXPANDED_NODES_KEY = 'dashboard-shell-expanded-nodes';
+const NAV_SCROLL_KEY = 'erp-shell-core-nav-scroll';
+const LEGACY_NAV_SCROLL_KEY = 'dashboard-shell-nav-scroll';
 
 function getCookieValue(name: string): string | null {
   if (typeof document === 'undefined') return null;
@@ -61,12 +71,12 @@ function getStoredToken(): string | null {
 
 function getSavedThemePreference(): ThemePreference | null {
   if (typeof localStorage !== 'undefined') {
-    const saved = localStorage.getItem(THEME_STORAGE_KEY) as ThemePreference | null;
+    const saved = (localStorage.getItem(THEME_STORAGE_KEY) || localStorage.getItem(LEGACY_THEME_STORAGE_KEY)) as ThemePreference | null;
     if (saved === 'light' || saved === 'dark' || saved === 'system') {
       return saved;
     }
   }
-  const cookiePref = getCookieValue(THEME_COOKIE_KEY);
+  const cookiePref = getCookieValue(THEME_COOKIE_KEY) || getCookieValue(LEGACY_THEME_COOKIE_KEY);
   if (cookiePref === 'light' || cookiePref === 'dark' || cookiePref === 'system') {
     return cookiePref;
   }
@@ -97,9 +107,13 @@ function applyThemeToDocument(theme: 'light' | 'dark') {
 function persistThemePreference(preference: ThemePreference) {
   if (typeof localStorage !== 'undefined') {
     localStorage.setItem(THEME_STORAGE_KEY, preference);
+    // Back-compat for older clients / templates.
+    localStorage.setItem(LEGACY_THEME_STORAGE_KEY, preference);
   }
   if (typeof document !== 'undefined') {
     document.cookie = `${THEME_COOKIE_KEY}=${preference}; path=/; max-age=31536000; SameSite=Lax`;
+    // Back-compat for older clients / templates.
+    document.cookie = `${LEGACY_THEME_COOKIE_KEY}=${preference}; path=/; max-age=31536000; SameSite=Lax`;
   }
 }
 
@@ -770,7 +784,9 @@ function ShellContent({
   const setMenuOpen = useCallback((open: boolean) => {
     setMenuOpenState(open);
     if (typeof window !== 'undefined') {
-      localStorage.setItem('dashboard-shell-menu-open', String(open));
+      localStorage.setItem(MENU_OPEN_KEY, String(open));
+      // Back-compat
+      localStorage.setItem(LEGACY_MENU_OPEN_KEY, String(open));
     }
   }, []);
 
@@ -786,7 +802,19 @@ function ShellContent({
 
   const loadInitialTheme = useCallback(() => {
     const saved = getSavedThemePreference();
-    const defaultPref = (hitConfig?.dashboardShell?.defaultTheme as ThemePreference | undefined) || config.defaultTheme || 'dark';
+    const shellTopLevel = (hitConfig as any)?.erpShellCore ?? (hitConfig as any)?.dashboardShell ?? {};
+    const shellPackOptions =
+      (hitConfig as any)?.featurePacks?.['erp-shell-core'] ??
+      (hitConfig as any)?.featurePacks?.['dashboard-shell'] ??
+      (hitConfig as any)?.featurePacks?.erpShellCore ??
+      (hitConfig as any)?.featurePacks?.dashboardShell ??
+      {};
+    const defaultPref =
+      (shellTopLevel?.defaultTheme as ThemePreference | undefined) ||
+      (shellPackOptions?.default_theme as ThemePreference | undefined) ||
+      (shellPackOptions?.defaultTheme as ThemePreference | undefined) ||
+      config.defaultTheme ||
+      'dark';
     const preference = (saved || defaultPref || 'dark') as ThemePreference;
     applyThemePreference(preference);
     setThemeLoaded(true);
@@ -1076,10 +1104,16 @@ function ShellContent({
     // Expected shape:
     //   hitConfig.dashboardShell.notificationProviders = [{ id: 'crm', path: '/api/crm/notifications' }, ...]
     const rawProviders =
-      (hitConfig?.dashboardShell as any)?.notificationProviders ||
-      (hitConfig?.dashboardShell as any)?.notification_providers ||
-      (hitConfig?.featurePacks as any)?.['dashboard-shell']?.notification_providers ||
-      (hitConfig?.featurePacks as any)?.dashboardShell?.notificationProviders ||
+      (hitConfig as any)?.erpShellCore?.notificationProviders ||
+      (hitConfig as any)?.erpShellCore?.notification_providers ||
+      (hitConfig as any)?.dashboardShell?.notificationProviders ||
+      (hitConfig as any)?.dashboardShell?.notification_providers ||
+      (hitConfig as any)?.featurePacks?.['erp-shell-core']?.notificationProviders ||
+      (hitConfig as any)?.featurePacks?.['erp-shell-core']?.notification_providers ||
+      (hitConfig as any)?.featurePacks?.['dashboard-shell']?.notificationProviders ||
+      (hitConfig as any)?.featurePacks?.['dashboard-shell']?.notification_providers ||
+      (hitConfig as any)?.featurePacks?.erpShellCore?.notificationProviders ||
+      (hitConfig as any)?.featurePacks?.dashboardShell?.notificationProviders ||
       [];
 
     const providers: Array<{ id: string; path: string }> = Array.isArray(rawProviders)
@@ -1309,12 +1343,12 @@ function ShellContent({
     setMounted(true);
     if (typeof window !== 'undefined') {
       // Restore menu open state
-      const savedMenuOpen = localStorage.getItem('dashboard-shell-menu-open');
+      const savedMenuOpen = localStorage.getItem(MENU_OPEN_KEY) || localStorage.getItem(LEGACY_MENU_OPEN_KEY);
       if (savedMenuOpen !== null) {
         setMenuOpenState(savedMenuOpen !== 'false');
       }
       // Restore expanded nodes (but start collapsed by default - only restore if user explicitly expanded something)
-      const savedNodes = localStorage.getItem('dashboard-shell-expanded-nodes');
+      const savedNodes = localStorage.getItem(EXPANDED_NODES_KEY) || localStorage.getItem(LEGACY_EXPANDED_NODES_KEY);
       if (savedNodes) {
         try {
           const parsed = JSON.parse(savedNodes);
@@ -1335,7 +1369,7 @@ function ShellContent({
   useEffect(() => {
     const restoreScroll = () => {
       if (typeof window === 'undefined') return;
-      const savedScroll = sessionStorage.getItem('dashboard-shell-nav-scroll');
+      const savedScroll = sessionStorage.getItem(NAV_SCROLL_KEY) || sessionStorage.getItem(LEGACY_NAV_SCROLL_KEY);
       if (savedScroll) {
         const scrollTop = parseInt(savedScroll, 10);
         // Try both nav refs (expanded or collapsed)
@@ -1356,7 +1390,9 @@ function ShellContent({
   // Save nav scroll position on scroll
   const handleNavScroll = useCallback((e: React.UIEvent<HTMLElement>) => {
     if (typeof window !== 'undefined') {
-      sessionStorage.setItem('dashboard-shell-nav-scroll', String(e.currentTarget.scrollTop));
+      sessionStorage.setItem(NAV_SCROLL_KEY, String(e.currentTarget.scrollTop));
+      // Back-compat
+      sessionStorage.setItem(LEGACY_NAV_SCROLL_KEY, String(e.currentTarget.scrollTop));
     }
   }, []);
 
@@ -1370,7 +1406,9 @@ function ShellContent({
       }
       // Persist to localStorage
       if (typeof window !== 'undefined') {
-        localStorage.setItem('dashboard-shell-expanded-nodes', JSON.stringify([...next]));
+        localStorage.setItem(EXPANDED_NODES_KEY, JSON.stringify([...next]));
+        // Back-compat
+        localStorage.setItem(LEGACY_EXPANDED_NODES_KEY, JSON.stringify([...next]));
       }
       return next;
     });

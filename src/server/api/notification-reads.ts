@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ readIds: rows.map((r: { notificationId: unknown }) => String(r.notificationId)) });
   } catch (error) {
-    console.error('[dashboard-shell] notification-reads GET error:', error);
+    console.error('[erp-shell-core] notification-reads GET error:', error);
     return jsonError('Failed to fetch notification reads', 500);
   }
 }
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ok: true, upserted: ids.length });
   } catch (error) {
-    console.error('[dashboard-shell] notification-reads POST error:', error);
+    console.error('[erp-shell-core] notification-reads POST error:', error);
     return jsonError('Failed to upsert notification reads', 500);
   }
 }

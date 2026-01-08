@@ -14,8 +14,13 @@ function quoteIdent(ident) {
 export function getTableProviderRegistryFromRequest(request) {
     const user = extractUserFromRequest(request);
     const raw = user?.featurePacks || {};
-    const dash = raw?.['dashboard-shell'] || raw?.dashboardShell || raw?.dashboard_shell || {};
-    const options = dash?.options || {};
+    const shell = raw?.['erp-shell-core'] ||
+        raw?.['dashboard-shell'] ||
+        raw?.erpShellCore ||
+        raw?.dashboardShell ||
+        raw?.dashboard_shell ||
+        {};
+    const options = shell?.options || {};
     const providers = options?.tableProviders || options?.table_providers || {};
     const reg = {};
     // Built-in defaults (safe + minimal). Apps can override/extend via config.
