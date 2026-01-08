@@ -37,9 +37,12 @@ function loadHitConfig(projectRoot: string): any | null {
   }
 }
 
-function loadDashboardShellDefaults(projectRoot: string): Record<string, any> | null {
+function loadErpShellDefaults(projectRoot: string): Record<string, any> | null {
   // Try node_modules first (production), then monorepo workspace (dev).
+  // Keep dashboard-shell fallbacks for older apps/workspaces.
   const candidates = [
+    path.join(projectRoot, 'node_modules', '@hit', 'feature-pack-erp-shell-core', 'feature-pack.yaml'),
+    path.join(projectRoot, '..', '..', 'hit-feature-packs', 'hit-feature-pack-erp-shell-core', 'feature-pack.yaml'),
     path.join(projectRoot, 'node_modules', '@hit', 'feature-pack-dashboard-shell', 'feature-pack.yaml'),
     path.join(projectRoot, '..', '..', 'hit-feature-packs', 'hit-feature-pack-dashboard-shell', 'feature-pack.yaml'),
   ];
@@ -73,9 +76,11 @@ export async function GET(request: NextRequest) {
   const packs: PackMeta[] = Array.isArray((caps as any)?.featurePacksDetailed) ? (caps as any).featurePacksDetailed : [];
 
   const hitConfig = loadHitConfig(projectRoot);
-  const shellCfg = (hitConfig as any)?.featurePacks?.['dashboard-shell'];
+  const shellCfg =
+    (hitConfig as any)?.featurePacks?.['erp-shell-core'] ??
+    (hitConfig as any)?.featurePacks?.['dashboard-shell'];
 
-  const shellDefaults = loadDashboardShellDefaults(projectRoot);
+  const shellDefaults = loadErpShellDefaults(projectRoot);
   const defaultNexusPrompt = shellDefaults?.nexus_prompt?.default;
 
   const nexusPrompt =
