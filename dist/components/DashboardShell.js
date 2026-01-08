@@ -2,9 +2,10 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import { Menu, Bell, User, Settings, LogOut, ChevronRight, ChevronDown, } from 'lucide-react';
-import { Monitor, Moon, Sun, X, RotateCw } from 'lucide-react';
+import { Monitor, Moon, Sun, X, RotateCw, Camera, Trash2 } from 'lucide-react';
 import { UiKitProvider, ThemeProvider, useThemeTokens, useTheme, styles, defaultKit, clearUserAvatarCache } from '@hit/ui-kit';
 import { LucideIcon } from '../utils/lucide-dynamic';
+import { ProfilePictureCropModal } from '@hit/feature-pack-auth-core';
 const ShellContext = createContext(null);
 export function useShell() {
     const context = useContext(ShellContext);
@@ -535,6 +536,11 @@ function ShellContent({ children, config, navItems, user, activePath, onNavigate
         success: null,
     });
     const [profileLoaded, setProfileLoaded] = useState(false);
+    const [profilePictureUrl, setProfilePictureUrl] = useState(null);
+    const [imageToCrop, setImageToCrop] = useState(null);
+    const [cropModalOpen, setCropModalOpen] = useState(false);
+    const [uploadingPicture, setUploadingPicture] = useState(false);
+    const fileInputRef = React.useRef(null);
     const setMenuOpen = useCallback((open) => {
         setMenuOpenState(open);
         if (typeof window !== 'undefined') {
@@ -1146,6 +1152,8 @@ function ShellContent({ children, config, navItems, user, activePath, onNavigate
     const closeProfileModal = useCallback(() => {
         setShowProfileModal(false);
         setProfileStatus((prev) => ({ ...prev, error: null, success: null }));
+        setImageToCrop(null);
+        setCropModalOpen(false);
     }, []);
     const fetchProfile = useCallback(async () => {
         if (!currentUser?.email)
@@ -1166,6 +1174,14 @@ function ShellContent({ children, config, navItems, user, activePath, onNavigate
             }
             setProfileMetadata(data.metadata || {});
             setProfileFields(data.profile_fields || {});
+            setProfilePictureUrl(data.profile_picture_url || null);
+            // Update currentUser avatar if profile picture is available
+            if (data.profile_picture_url) {
+                setCurrentUser((prev) => prev ? {
+                    ...prev,
+                    avatar: data.profile_picture_url || undefined,
+                } : null);
+            }
             // Fetch profile field metadata (including email)
             try {
                 const fieldsResponse = await fetch(`/api/proxy/auth/me/profile-fields`, {
@@ -1268,6 +1284,158 @@ function ShellContent({ children, config, navItems, user, activePath, onNavigate
         profileFields,
         profileFieldMetadata,
     ]);
+    const handlePictureUpload = useCallback(async (event) => {
+        const file = event.target.files?.[0];
+        if (!file)
+            return;
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+            setProfileStatus({
+                saving: false,
+                error: 'File must be an image',
+                success: null,
+            });
+            return;
+        }
+        // Validate file size (max 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+            setProfileStatus({
+                saving: false,
+                error: 'File size must be less than 5MB',
+                success: null,
+            });
+            return;
+        }
+        // Convert file to data URL and show crop modal
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            setImageToCrop(reader.result);
+            setCropModalOpen(true);
+        };
+        reader.onerror = () => {
+            setProfileStatus({
+                saving: false,
+                error: 'Failed to read image file',
+                success: null,
+            });
+        };
+        reader.readAsDataURL(file);
+        // Reset file input
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+    }, []);
+    const handleCropComplete = useCallback(async (croppedImageBase64) => {
+        if (!currentUser?.email)
+            return;
+        try {
+            setUploadingPicture(true);
+            const token = getStoredToken();
+            if (!token) {
+                throw new Error('You must be signed in to update your profile.');
+            }
+            // Update profile picture using PUT /me endpoint with base64 string
+            const response = await fetch(`/api/proxy/auth/me`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ profile_picture_url: croppedImageBase64 }),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(data?.detail || data?.error || 'Failed to upload profile picture');
+            }
+            setProfilePictureUrl(data.profile_picture_url || null);
+            // Update currentUser avatar
+            setCurrentUser((prev) => prev ? {
+                ...prev,
+                avatar: data.profile_picture_url || undefined,
+            } : null);
+            // Dispatch event to update top header avatar
+            if (typeof window !== 'undefined') {
+                const updateEvent = new CustomEvent('user-profile-updated', {
+                    detail: { profile_picture_url: data.profile_picture_url, email: currentUser.email },
+                });
+                window.dispatchEvent(updateEvent);
+            }
+            setProfileStatus({
+                saving: false,
+                error: null,
+                success: 'Profile picture updated successfully.',
+            });
+        }
+        catch (err) {
+            setProfileStatus({
+                saving: false,
+                error: err instanceof Error ? err.message : 'Failed to upload profile picture',
+                success: null,
+            });
+        }
+        finally {
+            setUploadingPicture(false);
+            setImageToCrop(null);
+        }
+    }, [currentUser?.email]);
+    const handlePictureDelete = useCallback(async () => {
+        if (!currentUser?.email)
+            return;
+        if (!confirm('Are you sure you want to delete your profile picture?')) {
+            return;
+        }
+        try {
+            setUploadingPicture(true);
+            const token = getStoredToken();
+            if (!token) {
+                throw new Error('You must be signed in to update your profile.');
+            }
+            // Delete profile picture by setting it to null via PUT /me
+            const response = await fetch(`/api/proxy/auth/me`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ profile_picture_url: null }),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(data?.detail || data?.error || 'Failed to delete profile picture');
+            }
+            setProfilePictureUrl(null);
+            // Update currentUser avatar
+            setCurrentUser((prev) => prev ? {
+                ...prev,
+                avatar: undefined,
+            } : null);
+            // Dispatch event to update top header avatar
+            if (typeof window !== 'undefined') {
+                const updateEvent = new CustomEvent('user-profile-updated', {
+                    detail: { profile_picture_url: null, email: currentUser.email },
+                });
+                window.dispatchEvent(updateEvent);
+            }
+            setProfileStatus({
+                saving: false,
+                error: null,
+                success: 'Profile picture deleted successfully.',
+            });
+        }
+        catch (err) {
+            setProfileStatus({
+                saving: false,
+                error: err instanceof Error ? err.message : 'Failed to delete profile picture',
+                success: null,
+            });
+        }
+        finally {
+            setUploadingPicture(false);
+        }
+    }, [currentUser?.email]);
+    const triggerFileInput = useCallback(() => {
+        fileInputRef.current?.click();
+    }, []);
     useEffect(() => {
         if (showProfileModal && !profileLoaded && !profileStatus.saving) {
             fetchProfile();
@@ -1762,7 +1930,46 @@ function ShellContent({ children, config, navItems, user, activePath, onNavigate
                                                 width: '36px',
                                                 height: '36px',
                                                 backgroundColor: colors.bg.muted,
-                                            }, "aria-label": "Close profile settings", children: _jsx(X, { size: 18 }) })] }), _jsxs("div", { style: styles({ padding: spacing.xl, display: 'flex', flexDirection: 'column', gap: spacing.md }), children: [profileFieldMetadata
+                                            }, "aria-label": "Close profile settings", children: _jsx(X, { size: 18 }) })] }), _jsxs("div", { style: styles({ padding: spacing.xl, display: 'flex', flexDirection: 'column', gap: spacing.md }), children: [_jsxs("div", { style: styles({ display: 'flex', flexDirection: 'column', gap: spacing.sm, paddingBottom: spacing.md, borderBottom: `1px solid ${colors.border.subtle}` }), children: [_jsx("label", { style: styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.secondary }), children: "Profile Picture" }), _jsxs("div", { style: styles({ display: 'flex', alignItems: 'center', gap: spacing.md }), children: [profilePictureUrl ? (_jsx("img", { src: profilePictureUrl, alt: currentUser?.email || 'User', style: styles({
+                                                                width: '80px',
+                                                                height: '80px',
+                                                                borderRadius: radius.full,
+                                                                objectFit: 'cover',
+                                                                border: `2px solid ${colors.border.default}`,
+                                                            }) })) : (_jsx("div", { style: styles({
+                                                                width: '80px',
+                                                                height: '80px',
+                                                                background: `linear-gradient(135deg, ${colors.primary.default}, ${colors.accent.default})`,
+                                                                borderRadius: radius.full,
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                border: `2px solid ${colors.border.default}`,
+                                                            }), children: _jsx(User, { size: 32, style: { color: colors.text.inverse } }) })), _jsxs("div", { style: styles({ display: 'flex', flexDirection: 'column', gap: spacing.xs, flex: 1 }), children: [_jsx("div", { style: styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.muted }), children: currentUser?.email || 'User' }), _jsxs("div", { style: styles({ display: 'flex', gap: spacing.sm }), children: [_jsxs("button", { onClick: triggerFileInput, disabled: uploadingPicture, style: styles({
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                gap: spacing.xs,
+                                                                                padding: `${spacing.xs} ${spacing.sm}`,
+                                                                                borderRadius: radius.md,
+                                                                                border: `1px solid ${colors.border.default}`,
+                                                                                backgroundColor: colors.bg.page,
+                                                                                color: colors.text.primary,
+                                                                                fontSize: ts.bodySmall.fontSize,
+                                                                                cursor: uploadingPicture ? 'wait' : 'pointer',
+                                                                                opacity: uploadingPicture ? 0.6 : 1,
+                                                                            }), children: [_jsx(Camera, { size: 14 }), "Change"] }), profilePictureUrl && (_jsxs("button", { onClick: handlePictureDelete, disabled: uploadingPicture, style: styles({
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                gap: spacing.xs,
+                                                                                padding: `${spacing.xs} ${spacing.sm}`,
+                                                                                borderRadius: radius.md,
+                                                                                border: `1px solid ${colors.border.default}`,
+                                                                                backgroundColor: colors.bg.page,
+                                                                                color: colors.error.default,
+                                                                                fontSize: ts.bodySmall.fontSize,
+                                                                                cursor: uploadingPicture ? 'wait' : 'pointer',
+                                                                                opacity: uploadingPicture ? 0.6 : 1,
+                                                                            }), children: [_jsx(Trash2, { size: 14 }), "Delete"] }))] })] })] }), _jsx("input", { ref: fileInputRef, type: "file", accept: "image/*", onChange: handlePictureUpload, style: { display: 'none' } })] }), profileFieldMetadata
                                             .sort((a, b) => a.display_order - b.display_order)
                                             .map((fieldMeta) => {
                                             const isAdmin = (currentUser?.roles || []).map((r) => String(r || '').toLowerCase()).includes('admin');
@@ -1831,7 +2038,10 @@ function ShellContent({ children, config, navItems, user, activePath, onNavigate
                                                         fontWeight: ts.label.fontWeight,
                                                         cursor: profileStatus.saving ? 'wait' : 'pointer',
                                                         opacity: profileStatus.saving ? 0.8 : 1,
-                                                    }), children: profileStatus.saving ? 'Saving…' : 'Save changes' })] })] })] }) })] }))] }));
+                                                    }), children: profileStatus.saving ? 'Saving…' : 'Save changes' })] })] })] }) }), imageToCrop && (_jsx(ProfilePictureCropModal, { open: cropModalOpen, onClose: () => {
+                            setCropModalOpen(false);
+                            setImageToCrop(null);
+                        }, imageSrc: imageToCrop, onCropComplete: handleCropComplete }))] }))] }));
 }
 export function DashboardShell({ children, config: configProp = {}, navItems = [], user = null, activePath = '/', onNavigate, onLogout, initialNotifications = [], connectionStatus = 'disconnected', version, }) {
     const debugNav = typeof window !== 'undefined' &&

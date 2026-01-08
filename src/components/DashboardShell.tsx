@@ -10,10 +10,11 @@ import {
   ChevronRight,
   ChevronDown,
 } from 'lucide-react';
-import { Monitor, Moon, Sun, X, RotateCw } from 'lucide-react';
+import { Monitor, Moon, Sun, X, RotateCw, Camera, Trash2 } from 'lucide-react';
 import { UiKitProvider, ThemeProvider, useThemeTokens, useTheme, styles, defaultKit, clearUserAvatarCache } from '@hit/ui-kit';
 import type { NavItem, ShellUser, Notification, ShellConfig, ConnectionStatus } from '../types';
 import { LucideIcon } from '../utils/lucide-dynamic';
+import { ProfilePictureCropModal } from '@hit/feature-pack-auth-core';
 
 // =============================================================================
 // CONTEXT
@@ -771,6 +772,11 @@ function ShellContent({
     success: null,
   });
   const [profileLoaded, setProfileLoaded] = useState(false);
+  const [profilePictureUrl, setProfilePictureUrl] = useState<string | null>(null);
+  const [imageToCrop, setImageToCrop] = useState<string | null>(null);
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [uploadingPicture, setUploadingPicture] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const setMenuOpen = useCallback((open: boolean) => {
     setMenuOpenState(open);
@@ -1416,6 +1422,8 @@ function ShellContent({
   const closeProfileModal = useCallback(() => {
     setShowProfileModal(false);
     setProfileStatus((prev) => ({ ...prev, error: null, success: null }));
+    setImageToCrop(null);
+    setCropModalOpen(false);
   }, []);
 
   const fetchProfile = useCallback(async () => {
@@ -1437,6 +1445,15 @@ function ShellContent({
       }
       setProfileMetadata(data.metadata || {});
       setProfileFields(data.profile_fields || {});
+      setProfilePictureUrl(data.profile_picture_url || null);
+      
+      // Update currentUser avatar if profile picture is available
+      if (data.profile_picture_url) {
+        setCurrentUser((prev) => prev ? {
+          ...prev,
+          avatar: data.profile_picture_url || undefined,
+        } : null);
+      }
       
       // Fetch profile field metadata (including email)
       try {
@@ -1546,6 +1563,174 @@ function ShellContent({
     profileFields,
     profileFieldMetadata,
   ]);
+
+  const handlePictureUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      setProfileStatus({
+        saving: false,
+        error: 'File must be an image',
+        success: null,
+      });
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setProfileStatus({
+        saving: false,
+        error: 'File size must be less than 5MB',
+        success: null,
+      });
+      return;
+    }
+
+    // Convert file to data URL and show crop modal
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setImageToCrop(reader.result as string);
+      setCropModalOpen(true);
+    };
+    reader.onerror = () => {
+      setProfileStatus({
+        saving: false,
+        error: 'Failed to read image file',
+        success: null,
+      });
+    };
+    reader.readAsDataURL(file);
+
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, []);
+
+  const handleCropComplete = useCallback(async (croppedImageBase64: string) => {
+    if (!currentUser?.email) return;
+
+    try {
+      setUploadingPicture(true);
+      const token = getStoredToken();
+      if (!token) {
+        throw new Error('You must be signed in to update your profile.');
+      }
+
+      // Update profile picture using PUT /me endpoint with base64 string
+      const response = await fetch(`/api/proxy/auth/me`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ profile_picture_url: croppedImageBase64 }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.detail || data?.error || 'Failed to upload profile picture');
+      }
+
+      setProfilePictureUrl(data.profile_picture_url || null);
+      
+      // Update currentUser avatar
+      setCurrentUser((prev) => prev ? {
+        ...prev,
+        avatar: data.profile_picture_url || undefined,
+      } : null);
+
+      // Dispatch event to update top header avatar
+      if (typeof window !== 'undefined') {
+        const updateEvent = new CustomEvent('user-profile-updated', {
+          detail: { profile_picture_url: data.profile_picture_url, email: currentUser.email },
+        });
+        window.dispatchEvent(updateEvent);
+      }
+
+      setProfileStatus({
+        saving: false,
+        error: null,
+        success: 'Profile picture updated successfully.',
+      });
+    } catch (err) {
+      setProfileStatus({
+        saving: false,
+        error: err instanceof Error ? err.message : 'Failed to upload profile picture',
+        success: null,
+      });
+    } finally {
+      setUploadingPicture(false);
+      setImageToCrop(null);
+    }
+  }, [currentUser?.email]);
+
+  const handlePictureDelete = useCallback(async () => {
+    if (!currentUser?.email) return;
+
+    if (!confirm('Are you sure you want to delete your profile picture?')) {
+      return;
+    }
+
+    try {
+      setUploadingPicture(true);
+      const token = getStoredToken();
+      if (!token) {
+        throw new Error('You must be signed in to update your profile.');
+      }
+
+      // Delete profile picture by setting it to null via PUT /me
+      const response = await fetch(`/api/proxy/auth/me`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ profile_picture_url: null }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.detail || data?.error || 'Failed to delete profile picture');
+      }
+
+      setProfilePictureUrl(null);
+      
+      // Update currentUser avatar
+      setCurrentUser((prev) => prev ? {
+        ...prev,
+        avatar: undefined,
+      } : null);
+
+      // Dispatch event to update top header avatar
+      if (typeof window !== 'undefined') {
+        const updateEvent = new CustomEvent('user-profile-updated', {
+          detail: { profile_picture_url: null, email: currentUser.email },
+        });
+        window.dispatchEvent(updateEvent);
+      }
+
+      setProfileStatus({
+        saving: false,
+        error: null,
+        success: 'Profile picture deleted successfully.',
+      });
+    } catch (err) {
+      setProfileStatus({
+        saving: false,
+        error: err instanceof Error ? err.message : 'Failed to delete profile picture',
+        success: null,
+      });
+    } finally {
+      setUploadingPicture(false);
+    }
+  }, [currentUser?.email]);
+
+  const triggerFileInput = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
 
   useEffect(() => {
     if (showProfileModal && !profileLoaded && !profileStatus.saving) {
@@ -2502,6 +2687,97 @@ function ShellContent({
               </div>
 
               <div style={styles({ padding: spacing.xl, display: 'flex', flexDirection: 'column', gap: spacing.md })}>
+                {/* Profile Picture Section */}
+                <div style={styles({ display: 'flex', flexDirection: 'column', gap: spacing.sm, paddingBottom: spacing.md, borderBottom: `1px solid ${colors.border.subtle}` })}>
+                  <label style={styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.secondary })}>
+                    Profile Picture
+                  </label>
+                  <div style={styles({ display: 'flex', alignItems: 'center', gap: spacing.md })}>
+                    {profilePictureUrl ? (
+                      <img
+                        src={profilePictureUrl}
+                        alt={currentUser?.email || 'User'}
+                        style={styles({
+                          width: '80px',
+                          height: '80px',
+                          borderRadius: radius.full,
+                          objectFit: 'cover',
+                          border: `2px solid ${colors.border.default}`,
+                        })}
+                      />
+                    ) : (
+                      <div style={styles({
+                        width: '80px',
+                        height: '80px',
+                        background: `linear-gradient(135deg, ${colors.primary.default}, ${colors.accent.default})`,
+                        borderRadius: radius.full,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        border: `2px solid ${colors.border.default}`,
+                      })}>
+                        <User size={32} style={{ color: colors.text.inverse }} />
+                      </div>
+                    )}
+                    <div style={styles({ display: 'flex', flexDirection: 'column', gap: spacing.xs, flex: 1 })}>
+                      <div style={styles({ fontSize: ts.bodySmall.fontSize, color: colors.text.muted })}>
+                        {currentUser?.email || 'User'}
+                      </div>
+                      <div style={styles({ display: 'flex', gap: spacing.sm })}>
+                        <button
+                          onClick={triggerFileInput}
+                          disabled={uploadingPicture}
+                          style={styles({
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: spacing.xs,
+                            padding: `${spacing.xs} ${spacing.sm}`,
+                            borderRadius: radius.md,
+                            border: `1px solid ${colors.border.default}`,
+                            backgroundColor: colors.bg.page,
+                            color: colors.text.primary,
+                            fontSize: ts.bodySmall.fontSize,
+                            cursor: uploadingPicture ? 'wait' : 'pointer',
+                            opacity: uploadingPicture ? 0.6 : 1,
+                          })}
+                        >
+                          <Camera size={14} />
+                          Change
+                        </button>
+                        {profilePictureUrl && (
+                          <button
+                            onClick={handlePictureDelete}
+                            disabled={uploadingPicture}
+                            style={styles({
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: spacing.xs,
+                              padding: `${spacing.xs} ${spacing.sm}`,
+                              borderRadius: radius.md,
+                              border: `1px solid ${colors.border.default}`,
+                              backgroundColor: colors.bg.page,
+                              color: colors.error.default,
+                              fontSize: ts.bodySmall.fontSize,
+                              cursor: uploadingPicture ? 'wait' : 'pointer',
+                              opacity: uploadingPicture ? 0.6 : 1,
+                            })}
+                          >
+                            <Trash2 size={14} />
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handlePictureUpload}
+                    style={{ display: 'none' }}
+                  />
+                </div>
+
                 {/* Profile Fields - Integrated (including email) */}
                 {profileFieldMetadata
                   .sort((a, b) => a.display_order - b.display_order)
@@ -2649,6 +2925,17 @@ function ShellContent({
               </div>
             </div>
           </div>
+          {imageToCrop && (
+            <ProfilePictureCropModal
+              open={cropModalOpen}
+              onClose={() => {
+                setCropModalOpen(false);
+                setImageToCrop(null);
+              }}
+              imageSrc={imageToCrop}
+              onCropComplete={handleCropComplete}
+            />
+          )}
         </>
       )}
     </ShellContext.Provider>
