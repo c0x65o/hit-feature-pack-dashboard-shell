@@ -42,7 +42,7 @@ function loadErpShellDefaults(projectRoot: string): Record<string, any> | null {
   // Keep dashboard-shell fallbacks for older apps/workspaces.
   const candidates = [
     path.join(projectRoot, 'node_modules', '@hit', 'feature-pack-erp-shell-core', 'feature-pack.yaml'),
-    path.join(projectRoot, '..', '..', 'hit-feature-packs', 'hit-feature-pack-erp-shell-core', 'feature-pack.yaml'),
+    path.join(projectRoot, '..', '..', 'hit-feature-packs', 'core', 'hit-feature-pack-erp-shell-core', 'feature-pack.yaml'),
     path.join(projectRoot, 'node_modules', '@hit', 'feature-pack-dashboard-shell', 'feature-pack.yaml'),
     path.join(projectRoot, '..', '..', 'hit-feature-packs', 'hit-feature-pack-dashboard-shell', 'feature-pack.yaml'),
   ];
