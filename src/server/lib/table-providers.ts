@@ -33,9 +33,7 @@ export function getTableProviderRegistryFromRequest(request: NextRequest): Table
   const raw = (user as any)?.featurePacks || {};
   const shell =
     raw?.['erp-shell-core'] ||
-    raw?.['dashboard-shell'] ||
     raw?.erpShellCore ||
-    raw?.dashboardShell ||
     raw?.dashboard_shell ||
     {};
   const options = (shell as any)?.options || {};

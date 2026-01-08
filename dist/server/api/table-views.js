@@ -4,7 +4,7 @@ import { getDb } from '@/lib/db';
 import { tableViews, tableViewFilters, tableViewShares, } from '@/lib/feature-pack-schemas';
 import { eq, desc, and, inArray, or, sql } from 'drizzle-orm';
 import { extractUserFromRequest } from '../auth';
-import { resolveUserPrincipals } from '@/lib/acl-utils';
+import { resolveUserPrincipals } from '@hit/feature-pack-auth-core/server/lib/acl-utils';
 // Required for Next.js App Router
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';

@@ -15,9 +15,7 @@ export function getTableProviderRegistryFromRequest(request) {
     const user = extractUserFromRequest(request);
     const raw = user?.featurePacks || {};
     const shell = raw?.['erp-shell-core'] ||
-        raw?.['dashboard-shell'] ||
         raw?.erpShellCore ||
-        raw?.dashboardShell ||
         raw?.dashboard_shell ||
         {};
     const options = shell?.options || {};

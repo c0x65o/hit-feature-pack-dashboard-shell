@@ -827,7 +827,7 @@ function ShellContent({ children, config, navItems, user, activePath, onNavigate
             return [];
         // Allow apps to plug additional providers into the shell feed without modifying shell code.
         // Expected shape:
-        //   hitConfig.dashboardShell.notificationProviders = [{ id: 'crm', path: '/api/crm/notifications' }, ...]
+        //   hitConfig.erpShellCore.notificationProviders = [{ id: 'crm', path: '/api/crm/notifications' }, ...]
         const rawProviders = hitConfig?.erpShellCore?.notificationProviders ||
             hitConfig?.erpShellCore?.notification_providers ||
             hitConfig?.featurePacks?.['erp-shell-core']?.notificationProviders ||
@@ -933,8 +933,11 @@ function ShellContent({ children, config, navItems, user, activePath, onNavigate
         let unsubscribers = [];
         let cancelled = false;
         const hasWorkflows = Boolean(hitConfig?.featurePacks?.workflows);
-        const patternsFromConfig = hitConfig?.dashboardShell?.notificationRealtimePatterns ||
-            hitConfig?.dashboardShell?.notification_realtime_patterns ||
+        const patternsFromConfig = hitConfig?.erpShellCore?.notificationRealtimePatterns ||
+            hitConfig?.erpShellCore?.notification_realtime_patterns ||
+            hitConfig?.featurePacks?.['erp-shell-core']?.notificationRealtimePatterns ||
+            hitConfig?.featurePacks?.['erp-shell-core']?.notification_realtime_patterns ||
+            hitConfig?.featurePacks?.erpShellCore?.notificationRealtimePatterns ||
             [];
         const rolePatterns = hasWorkflows && Array.isArray(currentUser?.roles)
             ? currentUser.roles.map((r) => `workflows.inbox.role.${safeKey(String(r || '').toLowerCase())}.*`)

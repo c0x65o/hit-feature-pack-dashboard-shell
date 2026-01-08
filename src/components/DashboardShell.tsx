@@ -1089,7 +1089,7 @@ function ShellContent({
 
     // Allow apps to plug additional providers into the shell feed without modifying shell code.
     // Expected shape:
-    //   hitConfig.dashboardShell.notificationProviders = [{ id: 'crm', path: '/api/crm/notifications' }, ...]
+    //   hitConfig.erpShellCore.notificationProviders = [{ id: 'crm', path: '/api/crm/notifications' }, ...]
     const rawProviders =
       (hitConfig as any)?.erpShellCore?.notificationProviders ||
       (hitConfig as any)?.erpShellCore?.notification_providers ||
@@ -1198,8 +1198,11 @@ function ShellContent({
 
     const hasWorkflows = Boolean(hitConfig?.featurePacks?.workflows);
     const patternsFromConfig =
-      (hitConfig?.dashboardShell as any)?.notificationRealtimePatterns ||
-      (hitConfig?.dashboardShell as any)?.notification_realtime_patterns ||
+      (hitConfig as any)?.erpShellCore?.notificationRealtimePatterns ||
+      (hitConfig as any)?.erpShellCore?.notification_realtime_patterns ||
+      (hitConfig as any)?.featurePacks?.['erp-shell-core']?.notificationRealtimePatterns ||
+      (hitConfig as any)?.featurePacks?.['erp-shell-core']?.notification_realtime_patterns ||
+      (hitConfig as any)?.featurePacks?.erpShellCore?.notificationRealtimePatterns ||
       [];
     const rolePatterns =
       hasWorkflows && Array.isArray(currentUser?.roles)
