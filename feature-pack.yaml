@@ -39,34 +39,34 @@ api:
   routes:
     - path: /api/notification-reads
       methods: [GET, POST]
-      handler: "@hit/feature-pack-dashboard-shell/server/api/notification-reads"
+      handler: "@hit/feature-pack-erp-shell-core/server/api/notification-reads"
       description: "Get or upsert notification read state for the current user"
     - path: /api/table-views
       methods: [GET, POST]
-      handler: "@hit/feature-pack-dashboard-shell/server/api/table-views"
+      handler: "@hit/feature-pack-erp-shell-core/server/api/table-views"
       description: "List views (GET) or create view (POST)"
     - path: /api/table-views/[id]
       methods: [GET, PUT, DELETE]
-      handler: "@hit/feature-pack-dashboard-shell/server/api/table-views-id"
+      handler: "@hit/feature-pack-erp-shell-core/server/api/table-views-id"
       description: "Get, update, or delete a view"
     - path: /api/table-views/[id]/use
       methods: [PATCH]
-      handler: "@hit/feature-pack-dashboard-shell/server/api/table-views-use"
+      handler: "@hit/feature-pack-erp-shell-core/server/api/table-views-use"
       description: "Mark a view as used (update lastUsedAt)"
     - path: /api/table-views/[id]/shares
       methods: [GET, POST, DELETE]
-      handler: "@hit/feature-pack-dashboard-shell/server/api/table-views-shares"
+      handler: "@hit/feature-pack-erp-shell-core/server/api/table-views-shares"
       description: "List, add, or remove share entries for a view"
 
     # Generic table data helpers (config-driven providers)
     - path: /api/table-data/batch
       methods: [POST]
-      handler: "@hit/feature-pack-dashboard-shell/server/api/table-data-batch"
+      handler: "@hit/feature-pack-erp-shell-core/server/api/table-data-batch"
       description: "Fetch table rows by ids for a given tableId (uses provider registry)"
 
     - path: /api/table-data/grouped-buckets
       methods: [POST]
-      handler: "@hit/feature-pack-dashboard-shell/server/api/table-data-grouped-buckets"
+      handler: "@hit/feature-pack-erp-shell-core/server/api/table-data-grouped-buckets"
       description: "Fetch grouped rows for a segment bucket column (tableId+columnKey) via metrics-core + providers"
 
     # Dashboards + Reports moved to dedicated feature packs:
@@ -75,11 +75,11 @@ api:
     # Nexus (AI routing) — compile-time pack options + tool surfaces
     - path: /api/nexus/options
       methods: [GET]
-      handler: "@hit/feature-pack-dashboard-shell/server/api/nexus-options"
+      handler: "@hit/feature-pack-erp-shell-core/server/api/nexus-options"
       description: "Nexus router options (enabled packs + titles/descriptions + agent prompts + nexus prompt)"
     - path: /api/nexus/tools
       methods: [GET]
-      handler: "@hit/feature-pack-dashboard-shell/server/api/nexus-tools"
+      handler: "@hit/feature-pack-erp-shell-core/server/api/nexus-tools"
       description: "Tool surface for a given feature pack (from .hit/generated/capabilities.json)"
 
 routes:
