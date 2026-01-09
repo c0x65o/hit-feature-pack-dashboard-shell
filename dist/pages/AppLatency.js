@@ -245,17 +245,17 @@ export function AppLatency() {
                                                             fontFamily: 'JetBrains Mono, monospace',
                                                             fontSize: 12,
                                                             opacity: event.actorName ? 1 : 0.5,
-                                                        }, children: event.actorName || event.actorId || '—' }) }), _jsx("td", { style: tdStyles, children: _jsx("span", { style: {
-                                                            fontFamily: 'JetBrains Mono, monospace',
-                                                            fontSize: 13,
-                                                            fontWeight: 600,
-                                                            color: getSeverityColor(severity),
-                                                        }, children: formatDuration(event.details?.durationMs) }) }), _jsx("td", { style: tdStyles, children: _jsx(Badge, { variant: getSeverityBadgeVariant(severity), children: severity }) })] }, event.id));
+                                                        }, children: event.actorName || event.actorId || '—' }) }), _jsx("td", { style: tdStyles, children: _jsxs("div", { style: { minWidth: 120 }, children: [_jsx("span", { style: {
+                                                                    fontFamily: 'JetBrains Mono, monospace',
+                                                                    fontSize: 13,
+                                                                    fontWeight: 600,
+                                                                    color: getSeverityColor(severity),
+                                                                }, children: formatDuration(event.details?.durationMs) }), event.details?.dbTimeMs != null && event.details?.durationMs && event.details.durationMs > 0 && (_jsx("div", { style: { marginTop: 4 }, children: _jsx(TimingBar, { totalMs: event.details.durationMs, dbMs: event.details.dbTimeMs, moduleMs: event.details.moduleTimeMs }) }))] }) }), _jsx("td", { style: tdStyles, children: _jsx(Badge, { variant: getSeverityBadgeVariant(severity), children: severity }) })] }, event.id));
                                     }) })] }) })) }) }), pagination.totalPages > 1 && (_jsxs("div", { style: { padding: '0 16px 16px', display: 'flex', justifyContent: 'center', gap: 8 }, children: [_jsx(Button, { variant: "secondary", disabled: pagination.page <= 1, onClick: () => setPagination((p) => ({ ...p, page: p.page - 1 })), children: "\u2190 Previous" }), _jsxs("span", { style: { padding: '8px 16px', fontSize: 13 }, children: ["Page ", pagination.page, " of ", pagination.totalPages] }), _jsx(Button, { variant: "secondary", disabled: pagination.page >= pagination.totalPages, onClick: () => setPagination((p) => ({ ...p, page: p.page + 1 })), children: "Next \u2192" })] })), _jsx(Modal, { open: !!selectedEvent, onClose: () => setSelectedEvent(null), title: "Request Details", children: selectedEvent && (_jsx("div", { style: { padding: 16 }, children: _jsx(Tabs, { tabs: [
                             {
                                 id: 'overview',
                                 label: 'Overview',
-                                content: (_jsxs("div", { style: { display: 'flex', flexDirection: 'column', gap: 16, paddingTop: 16 }, children: [_jsx(DetailRow, { label: "Timestamp", value: formatDate(selectedEvent.createdAt) }), _jsx(DetailRow, { label: "Duration", value: formatDuration(selectedEvent.details?.durationMs) }), _jsx(DetailRow, { label: "Method", value: selectedEvent.method || '—' }), _jsx(DetailRow, { label: "Path", value: selectedEvent.path || '—', mono: true }), _jsx(DetailRow, { label: "User", value: selectedEvent.actorName || selectedEvent.actorId || 'Anonymous' }), _jsx(DetailRow, { label: "Status", value: String(selectedEvent.details?.responseStatus || '—') }), _jsx(DetailRow, { label: "Entity", value: `${selectedEvent.entityKind}${selectedEvent.entityId ? ` #${selectedEvent.entityId}` : ''}` }), _jsx(DetailRow, { label: "Pack", value: selectedEvent.packName || '—' })] })),
+                                content: (_jsxs("div", { style: { display: 'flex', flexDirection: 'column', gap: 16, paddingTop: 16 }, children: [_jsx(DetailRow, { label: "Timestamp", value: formatDate(selectedEvent.createdAt) }), _jsx(DetailRow, { label: "Duration", value: formatDuration(selectedEvent.details?.durationMs) }), selectedEvent.details?.dbTimeMs != null && (_jsxs("div", { style: { display: 'flex', gap: 12 }, children: [_jsx("span", { style: { width: 120, flexShrink: 0, fontSize: 12, opacity: 0.7, fontWeight: 500 }, children: "Breakdown" }), _jsx("div", { style: { flex: 1 }, children: _jsx(TimingBar, { totalMs: selectedEvent.details?.durationMs || 0, dbMs: selectedEvent.details.dbTimeMs, moduleMs: selectedEvent.details.moduleTimeMs }) })] })), _jsx(DetailRow, { label: "Method", value: selectedEvent.method || '—' }), _jsx(DetailRow, { label: "Path", value: selectedEvent.path || '—', mono: true }), _jsx(DetailRow, { label: "User", value: selectedEvent.actorName || selectedEvent.actorId || 'Anonymous' }), _jsx(DetailRow, { label: "Status", value: String(selectedEvent.details?.responseStatus || '—') }), _jsx(DetailRow, { label: "Entity", value: `${selectedEvent.entityKind}${selectedEvent.entityId ? ` #${selectedEvent.entityId}` : ''}` }), _jsx(DetailRow, { label: "Pack", value: selectedEvent.packName || '—' })] })),
                             },
                             {
                                 id: 'request',
@@ -283,6 +283,32 @@ export function AppLatency() {
                                             maxHeight: 300,
                                         }, children: JSON.stringify(selectedEvent.details.responseBody, null, 2) })) : (_jsx("div", { style: { opacity: 0.6, fontSize: 13 }, children: "No response body captured." })) })),
                             },
+                            {
+                                id: 'queries',
+                                label: `Slow Queries${selectedEvent.details?.slowQueries?.length ? ` (${selectedEvent.details.slowQueries.length})` : ''}`,
+                                content: (_jsx("div", { style: { paddingTop: 16 }, children: selectedEvent.details?.slowQueries && selectedEvent.details.slowQueries.length > 0 ? (_jsx("div", { style: { display: 'flex', flexDirection: 'column', gap: 12 }, children: selectedEvent.details.slowQueries.map((q, i) => (_jsxs("div", { style: {
+                                                background: 'rgba(239,68,68,0.1)',
+                                                border: '1px solid rgba(239,68,68,0.3)',
+                                                borderRadius: 8,
+                                                padding: 12,
+                                            }, children: [_jsxs("div", { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 8 }, children: [_jsxs("span", { style: { fontSize: 12, fontWeight: 600, color: '#ef4444' }, children: ["Query #", i + 1] }), _jsx("span", { style: {
+                                                                fontFamily: 'JetBrains Mono, monospace',
+                                                                fontSize: 12,
+                                                                fontWeight: 600,
+                                                                color: '#ef4444',
+                                                            }, children: formatDuration(q.durationMs) })] }), _jsx("pre", { style: {
+                                                        background: 'rgba(0,0,0,0.2)',
+                                                        padding: 10,
+                                                        borderRadius: 6,
+                                                        overflow: 'auto',
+                                                        fontSize: 11,
+                                                        fontFamily: 'JetBrains Mono, monospace',
+                                                        maxHeight: 200,
+                                                        whiteSpace: 'pre-wrap',
+                                                        wordBreak: 'break-all',
+                                                        margin: 0,
+                                                    }, children: q.sql })] }, i))) })) : (_jsxs("div", { style: { opacity: 0.6, fontSize: 13 }, children: ["No slow queries recorded for this request.", _jsx("div", { style: { marginTop: 8, fontSize: 12 }, children: "Queries slower than the threshold (default: 100ms) will appear here." })] })) })),
+                            },
                         ] }) })) }), _jsx(Modal, { open: showThresholdModal, onClose: () => setShowThresholdModal(false), title: "Slow Threshold Settings", children: _jsxs("div", { style: { padding: 16 }, children: [_jsx("p", { style: { marginBottom: 16, opacity: 0.8 }, children: "Requests slower than this threshold will be marked as \"slow\"." }), _jsx("div", { style: { marginBottom: 16 }, children: _jsx(Input, { type: "number", placeholder: "Threshold in milliseconds", value: newThreshold, onChange: (v) => setNewThreshold(typeof v === 'string' ? v : v.target?.value ?? '') }) }), _jsxs("div", { style: { display: 'flex', gap: 8, justifyContent: 'flex-end' }, children: [_jsx(Button, { variant: "secondary", onClick: () => setShowThresholdModal(false), children: "Cancel" }), _jsx(Button, { onClick: handleSetThreshold, children: "Save" })] })] }) })] }));
 }
 // =============================================================================
@@ -294,5 +320,34 @@ function DetailRow({ label, value, mono = false, }) {
                     fontFamily: mono ? 'JetBrains Mono, monospace' : 'inherit',
                     wordBreak: 'break-word',
                 }, children: value })] }));
+}
+// =============================================================================
+// TIMING BAR COMPONENT
+// =============================================================================
+function TimingBar({ totalMs, dbMs, moduleMs, }) {
+    if (totalMs <= 0)
+        return null;
+    const dbPct = Math.min(100, (dbMs / totalMs) * 100);
+    const modulePct = moduleMs ? Math.min(100 - dbPct, (moduleMs / totalMs) * 100) : 0;
+    const otherPct = Math.max(0, 100 - dbPct - modulePct);
+    return (_jsxs("div", { style: { display: 'flex', flexDirection: 'column', gap: 2 }, children: [_jsxs("div", { style: {
+                    display: 'flex',
+                    height: 6,
+                    borderRadius: 3,
+                    overflow: 'hidden',
+                    background: 'rgba(148,163,184,0.2)',
+                }, title: `DB: ${Math.round(dbMs)}ms (${dbPct.toFixed(0)}%) | Module: ${Math.round(moduleMs || 0)}ms (${modulePct.toFixed(0)}%) | Other: ${Math.round(totalMs - dbMs - (moduleMs || 0))}ms (${otherPct.toFixed(0)}%)`, children: [dbPct > 0 && (_jsx("div", { style: {
+                            width: `${dbPct}%`,
+                            background: '#ef4444', // Red for DB
+                            transition: 'width 200ms',
+                        } })), modulePct > 0 && (_jsx("div", { style: {
+                            width: `${modulePct}%`,
+                            background: '#f59e0b', // Orange for module calls
+                            transition: 'width 200ms',
+                        } })), otherPct > 0 && (_jsx("div", { style: {
+                            width: `${otherPct}%`,
+                            background: '#22c55e', // Green for other (fast)
+                            transition: 'width 200ms',
+                        } }))] }), _jsxs("div", { style: { display: 'flex', gap: 8, fontSize: 10, opacity: 0.7 }, children: [dbPct > 0 && (_jsxs("span", { style: { color: '#ef4444' }, children: ["DB ", Math.round(dbMs), "ms"] })), modulePct > 0 && (_jsxs("span", { style: { color: '#f59e0b' }, children: ["Ext ", Math.round(moduleMs || 0), "ms"] }))] })] }));
 }
 export default AppLatency;

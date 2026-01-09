@@ -7,6 +7,11 @@ import { useUi } from '@hit/ui-kit';
 // TYPES
 // =============================================================================
 
+interface SlowQuery {
+  sql: string;
+  durationMs: number;
+}
+
 interface AuditEvent {
   id: string;
   entityKind: string;
@@ -18,6 +23,9 @@ interface AuditEvent {
     responseBody?: unknown;
     responseStatus?: number;
     durationMs?: number;
+    dbTimeMs?: number;
+    moduleTimeMs?: number;
+    slowQueries?: SlowQuery[];
   } | null;
   actorId: string | null;
   actorName: string | null;
@@ -466,16 +474,28 @@ export function AppLatency() {
                           </span>
                         </td>
                         <td style={tdStyles}>
-                          <span
-                            style={{
-                              fontFamily: 'JetBrains Mono, monospace',
-                              fontSize: 13,
-                              fontWeight: 600,
-                              color: getSeverityColor(severity),
-                            }}
-                          >
-                            {formatDuration(event.details?.durationMs)}
-                          </span>
+                          <div style={{ minWidth: 120 }}>
+                            <span
+                              style={{
+                                fontFamily: 'JetBrains Mono, monospace',
+                                fontSize: 13,
+                                fontWeight: 600,
+                                color: getSeverityColor(severity),
+                              }}
+                            >
+                              {formatDuration(event.details?.durationMs)}
+                            </span>
+                            {/* Timing breakdown bar */}
+                            {event.details?.dbTimeMs != null && event.details?.durationMs && event.details.durationMs > 0 && (
+                              <div style={{ marginTop: 4 }}>
+                                <TimingBar
+                                  totalMs={event.details.durationMs}
+                                  dbMs={event.details.dbTimeMs}
+                                  moduleMs={event.details.moduleTimeMs}
+                                />
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td style={tdStyles}>
                           <Badge variant={getSeverityBadgeVariant(severity)}>
@@ -532,6 +552,23 @@ export function AppLatency() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingTop: 16 }}>
                       <DetailRow label="Timestamp" value={formatDate(selectedEvent.createdAt)} />
                       <DetailRow label="Duration" value={formatDuration(selectedEvent.details?.durationMs)} />
+                      
+                      {/* Timing breakdown */}
+                      {selectedEvent.details?.dbTimeMs != null && (
+                        <div style={{ display: 'flex', gap: 12 }}>
+                          <span style={{ width: 120, flexShrink: 0, fontSize: 12, opacity: 0.7, fontWeight: 500 }}>
+                            Breakdown
+                          </span>
+                          <div style={{ flex: 1 }}>
+                            <TimingBar
+                              totalMs={selectedEvent.details?.durationMs || 0}
+                              dbMs={selectedEvent.details.dbTimeMs}
+                              moduleMs={selectedEvent.details.moduleTimeMs}
+                            />
+                          </div>
+                        </div>
+                      )}
+                      
                       <DetailRow label="Method" value={selectedEvent.method || '—'} />
                       <DetailRow label="Path" value={selectedEvent.path || '—'} mono />
                       <DetailRow label="User" value={selectedEvent.actorName || selectedEvent.actorId || 'Anonymous'} />
@@ -587,6 +624,68 @@ export function AppLatency() {
                         </pre>
                       ) : (
                         <div style={{ opacity: 0.6, fontSize: 13 }}>No response body captured.</div>
+                      )}
+                    </div>
+                  ),
+                },
+                {
+                  id: 'queries',
+                  label: `Slow Queries${selectedEvent.details?.slowQueries?.length ? ` (${selectedEvent.details.slowQueries.length})` : ''}`,
+                  content: (
+                    <div style={{ paddingTop: 16 }}>
+                      {selectedEvent.details?.slowQueries && selectedEvent.details.slowQueries.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                          {selectedEvent.details.slowQueries.map((q, i) => (
+                            <div
+                              key={i}
+                              style={{
+                                background: 'rgba(239,68,68,0.1)',
+                                border: '1px solid rgba(239,68,68,0.3)',
+                                borderRadius: 8,
+                                padding: 12,
+                              }}
+                            >
+                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                                <span style={{ fontSize: 12, fontWeight: 600, color: '#ef4444' }}>
+                                  Query #{i + 1}
+                                </span>
+                                <span
+                                  style={{
+                                    fontFamily: 'JetBrains Mono, monospace',
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    color: '#ef4444',
+                                  }}
+                                >
+                                  {formatDuration(q.durationMs)}
+                                </span>
+                              </div>
+                              <pre
+                                style={{
+                                  background: 'rgba(0,0,0,0.2)',
+                                  padding: 10,
+                                  borderRadius: 6,
+                                  overflow: 'auto',
+                                  fontSize: 11,
+                                  fontFamily: 'JetBrains Mono, monospace',
+                                  maxHeight: 200,
+                                  whiteSpace: 'pre-wrap',
+                                  wordBreak: 'break-all',
+                                  margin: 0,
+                                }}
+                              >
+                                {q.sql}
+                              </pre>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ opacity: 0.6, fontSize: 13 }}>
+                          No slow queries recorded for this request.
+                          <div style={{ marginTop: 8, fontSize: 12 }}>
+                            Queries slower than the threshold (default: 100ms) will appear here.
+                          </div>
+                        </div>
                       )}
                     </div>
                   ),
@@ -656,6 +755,77 @@ function DetailRow({
       >
         {value}
       </span>
+    </div>
+  );
+}
+
+// =============================================================================
+// TIMING BAR COMPONENT
+// =============================================================================
+
+function TimingBar({
+  totalMs,
+  dbMs,
+  moduleMs,
+}: {
+  totalMs: number;
+  dbMs: number;
+  moduleMs?: number;
+}) {
+  if (totalMs <= 0) return null;
+  
+  const dbPct = Math.min(100, (dbMs / totalMs) * 100);
+  const modulePct = moduleMs ? Math.min(100 - dbPct, (moduleMs / totalMs) * 100) : 0;
+  const otherPct = Math.max(0, 100 - dbPct - modulePct);
+  
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <div
+        style={{
+          display: 'flex',
+          height: 6,
+          borderRadius: 3,
+          overflow: 'hidden',
+          background: 'rgba(148,163,184,0.2)',
+        }}
+        title={`DB: ${Math.round(dbMs)}ms (${dbPct.toFixed(0)}%) | Module: ${Math.round(moduleMs || 0)}ms (${modulePct.toFixed(0)}%) | Other: ${Math.round(totalMs - dbMs - (moduleMs || 0))}ms (${otherPct.toFixed(0)}%)`}
+      >
+        {dbPct > 0 && (
+          <div
+            style={{
+              width: `${dbPct}%`,
+              background: '#ef4444', // Red for DB
+              transition: 'width 200ms',
+            }}
+          />
+        )}
+        {modulePct > 0 && (
+          <div
+            style={{
+              width: `${modulePct}%`,
+              background: '#f59e0b', // Orange for module calls
+              transition: 'width 200ms',
+            }}
+          />
+        )}
+        {otherPct > 0 && (
+          <div
+            style={{
+              width: `${otherPct}%`,
+              background: '#22c55e', // Green for other (fast)
+              transition: 'width 200ms',
+            }}
+          />
+        )}
+      </div>
+      <div style={{ display: 'flex', gap: 8, fontSize: 10, opacity: 0.7 }}>
+        {dbPct > 0 && (
+          <span style={{ color: '#ef4444' }}>DB {Math.round(dbMs)}ms</span>
+        )}
+        {modulePct > 0 && (
+          <span style={{ color: '#f59e0b' }}>Ext {Math.round(moduleMs || 0)}ms</span>
+        )}
+      </div>
     </div>
   );
 }
