@@ -1,7 +1,11 @@
 'use client';
 import React from 'react';
 import { X, Loader2, AlertCircle, CheckCircle, AlertTriangle, Info, ChevronDown } from 'lucide-react';
-import { Autocomplete, DataTable, AlertDialog, Breadcrumb, Help } from '@hit/ui-kit';
+import { AlertDialog } from '@hit/ui-kit/components/AlertDialog';
+import { Autocomplete } from '@hit/ui-kit/components/Autocomplete';
+import { Breadcrumb } from '@hit/ui-kit/components/Breadcrumb';
+import { DataTable } from '@hit/ui-kit/components/DataTable';
+import { Help } from '@hit/ui-kit/components/Help';
 // =============================================================================
 // ERP DESIGN SYSTEM
 // =============================================================================
