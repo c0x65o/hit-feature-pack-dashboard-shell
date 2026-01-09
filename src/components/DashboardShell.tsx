@@ -11,7 +11,9 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { Monitor, Moon, Sun, X, RotateCw, Camera, Trash2 } from 'lucide-react';
-import { ThemeProvider, useThemeTokens, useTheme, styles, clearUserAvatarCache } from '@hit/ui-kit';
+import { ThemeProvider, useThemeTokens, useTheme } from '@hit/ui-kit/theme';
+import { styles } from '@hit/ui-kit/components/utils';
+import { clearUserAvatarCache } from '@hit/ui-kit/components/UserAvatar';
 import type { NavItem, ShellUser, Notification, ShellConfig, ConnectionStatus } from '../types';
 import { LucideIcon } from '../utils/lucide-dynamic';
 import { ProfilePictureCropModal } from '@hit/feature-pack-auth-core';

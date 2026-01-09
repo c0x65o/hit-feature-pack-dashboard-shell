@@ -1,6 +1,6 @@
 {
   "name": "@hit/feature-pack-erp-shell-core",
-  "version": "1.0.179",
+  "version": "1.0.180",
   "description": "A HIT feature pack",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -64,6 +64,7 @@
     "react-resizable": "^3.0.5"
   },
   "devDependencies": {
+    "@hit/feature-pack-stubs": "file:../../../packages/hit-feature-pack-stubs",
     "@hit/feature-pack-report-core": "file:../hit-feature-pack-report-core",
     "@hit/feature-pack-dashboard-core": "file:../hit-feature-pack-dashboard-core",
     "@hit/feature-pack-auth-core": "file:../hit-feature-pack-auth-core",

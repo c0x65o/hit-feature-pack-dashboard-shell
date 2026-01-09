@@ -3,7 +3,9 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import { Menu, Bell, User, Settings, LogOut, ChevronRight, ChevronDown, } from 'lucide-react';
 import { Monitor, Moon, Sun, X, RotateCw, Camera, Trash2 } from 'lucide-react';
-import { ThemeProvider, useThemeTokens, useTheme, styles, clearUserAvatarCache } from '@hit/ui-kit';
+import { ThemeProvider, useThemeTokens, useTheme } from '@hit/ui-kit/theme';
+import { styles } from '@hit/ui-kit/components/utils';
+import { clearUserAvatarCache } from '@hit/ui-kit/components/UserAvatar';
 import { LucideIcon } from '../utils/lucide-dynamic';
 import { ProfilePictureCropModal } from '@hit/feature-pack-auth-core';
 const ShellContext = createContext(null);
